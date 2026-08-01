@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Porteros">
+<meta name="theme-color" content="#185fa5">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+<title>Evaluación de porteros</title>
+<style>
+  :root {
+    --bg: #f4f3ef;
+    --card: #ffffff;
+    --border: #e0ddd4;
+    --border-strong: #c9c5b8;
+    --text: #1f1e1c;
+    --text-secondary: #6b6a63;
+    --text-muted: #9a988f;
+    --accent: #185fa5;
+    --accent-bg: #e6f1fb;
+    --success: #3b6d11;
+    --danger: #a32d2d;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    max-width: 520px;
+    margin: 0 auto;
+    padding-bottom: 80px;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 8px 0 20px;
+  }
+  h2 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    color: var(--text);
+  }
+  label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 6px;
+  }
+  input[type="text"] {
+    width: 100%;
+    height: 42px;
+    padding: 0 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-size: 16px;
+    background: var(--card);
+    color: var(--text);
+  }
+  input[type="text"]:focus,
+  input[type="date"]:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  input[type="date"] {
+    width: 100%;
+    height: 42px;
+    padding: 0 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-size: 16px;
+    background: var(--card);
+    color: var(--text);
+    font-family: inherit;
+  }
+  textarea {
+    width: 100%;
+    min-height: 90px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-size: 16px;
+    background: var(--card);
+    color: var(--text);
+    font-family: inherit;
+    resize: vertical;
+  }
+  .radio-group {
+    display: flex;
+    gap: 16px;
+  }
+  .radio-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 15px;
+    color: var(--text);
+    margin: 0;
+  }
+  .radio-option input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    margin: 0;
+  }
+  .field-group { margin-bottom: 20px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .item-row {
+    padding: 12px 14px;
+    border-top: 1px solid var(--border);
+  }
+  .item-row:first-child { border-top: none; }
+  .item-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .item-name { font-size: 14px; }
+  .item-val {
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 42px;
+    text-align: right;
+  }
+  .item-val.nd { color: var(--text-muted); }
+  .item-val.set { color: var(--accent); }
+  .item-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  input[type="range"] {
+    flex: 1;
+    height: 34px;
+    -webkit-appearance: none;
+    background: transparent;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    background: var(--border-strong);
+    border-radius: 2px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-top: -8px;
+  }
+  input[type="range"]:disabled::-webkit-slider-thumb { background: var(--border-strong); }
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    background: var(--border-strong);
+    border-radius: 2px;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-strong);
+    background: var(--card);
+    color: var(--text);
+    padding: 10px 14px;
+    cursor: pointer;
+  }
+  button:active { transform: scale(0.98); }
+  .nd-btn { font-size: 12px; padding: 6px 10px; min-width: 46px; }
+  .nd-btn.active { background: var(--bg); border-color: var(--text-muted); color: var(--text-muted); }
+  .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .btn-primary {
+    flex: 1;
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-bg);
+  }
+  .btn-secondary { flex: 1; }
+  #status {
+    font-size: 13px;
+    text-align: center;
+    margin-top: 12px;
+    min-height: 18px;
+  }
+  .saved-section { margin-top: 28px; }
+  .saved-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .saved-row:first-child { border-top: none; }
+  .saved-row .del {
+    font-size: 12px;
+    padding: 4px 10px;
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+  .empty {
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 14px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>Evaluación de porteros</h1>
+
+<div class="field-group">
+  <label for="nombre">Nombre del portero <span style="color:var(--danger)">*</span></label>
+  <input type="text" id="nombre" placeholder="Nombre y apellidos">
+</div>
+
+<div class="field-group">
+  <label for="equipo">Equipo</label>
+  <input type="text" id="equipo" placeholder="Nombre del equipo">
+</div>
+
+<div class="field-group">
+  <label for="fecha">Fecha</label>
+  <input type="date" id="fecha">
+</div>
+
+<div class="field-group">
+  <label>Tipo de visionado</label>
+  <div class="radio-group">
+    <label class="radio-option"><input type="radio" name="visionado" value="Directo" checked> Directo</label>
+    <label class="radio-option"><input type="radio" name="visionado" value="Video"> Video</label>
+  </div>
+</div>
+
+<div class="field-group">
+  <label for="partido">Partido</label>
+  <input type="text" id="partido" placeholder="Ej. Equipo A vs Equipo B">
+</div>
+
+<div id="form"></div>
+
+<div class="field-group">
+  <label for="observaciones">Observaciones</label>
+  <textarea id="observaciones" placeholder="Comentarios adicionales sobre el portero"></textarea>
+</div>
+
+<div class="actions">
+  <button class="btn-primary" id="guardar">Guardar evaluación</button>
+  <button class="btn-secondary" id="exportar">Exportar a Excel (CSV)</button>
+</div>
+<div id="status"></div>
+
+<div class="saved-section">
+  <h2>Evaluaciones guardadas</h2>
+  <div class="card" id="savedList"></div>
+</div>
+
+<script>
+const DATA = [
+  { cat: "Ofensivo / técnico", items: ["Posición básica","Blocaje frontal/lateral","Juego aéreo","Balón largo","Juego medio/largo pies","Pierna menos dominante","Desplazamientos","Blocaje/desvío estirada","1 vs 1","Saque de puerta","Relanzamiento mano","Coordinación","Reincorporaciones","Balón dividido","Juego corto pies","Relanzamiento pie"] },
+  { cat: "Defensivo / táctico", items: ["Bisectriz","Posicionamiento juego vertical (def/of)","Estructuras de barrera","Distancia de barrido","Lectura de juego (def/of)","Distancia con 1pr","Apoyos ofensivos"] },
+  { cat: "Físico / condicional", items: ["Somatotipo","Velocidad","Impulso"] },
+  { cat: "Psicológico", items: ["Toma de decisiones","Liderazgo"] }
+];
+
+const STORAGE_KEY = "gk_evaluaciones";
+
+let valores = {};
+DATA.forEach(s => s.items.forEach(it => { valores[it] = { nd: true, val: 2.5 }; }));
+
+function fmt(v){ return v.toFixed(2).replace(".", ","); }
+
+function loadSaved(){
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) { return []; }
+}
+
+function saveSaved(list){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+
+function renderForm(){
+  const form = document.getElementById("form");
+  let html = "";
+  DATA.forEach((sec, si) => {
+    html += '<h2>' + sec.cat + '</h2><div class="card">';
+    sec.items.forEach((it, ii) => {
+      const v = valores[it];
+      html += '<div class="item-row">';
+      html += '<div class="item-top">';
+      html += '<span class="item-name">' + it + '</span>';
+      html += '<span class="item-val ' + (v.nd ? 'nd' : 'set') + '">' + (v.nd ? 'N/D' : fmt(v.val)) + '</span>';
+      html += '</div>';
+      html += '<div class="item-controls">';
+      html += '<input type="range" min="0" max="5" step="0.5" value="' + v.val + '" data-item="' + si + '_' + ii + '" class="slider" ' + (v.nd ? 'disabled' : '') + '>';
+      html += '<button class="nd-btn ' + (v.nd ? 'active' : '') + '" data-nd="' + si + '_' + ii + '">N/D</button>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+  });
+  form.innerHTML = html;
+
+  document.querySelectorAll(".slider").forEach(s => {
+    s.addEventListener("input", e => {
+      const [si, ii] = e.target.dataset.item.split("_").map(Number);
+      const it = DATA[si].items[ii];
+      valores[it].val = parseFloat(e.target.value);
+      renderForm();
+    });
+  });
+
+  document.querySelectorAll(".nd-btn").forEach(b => {
+    b.addEventListener("click", e => {
+      const [si, ii] = e.target.dataset.nd.split("_").map(Number);
+      const it = DATA[si].items[ii];
+      valores[it].nd = !valores[it].nd;
+      renderForm();
+    });
+  });
+}
+
+function renderSavedList(){
+  const list = loadSaved();
+  const el = document.getElementById("savedList");
+  if (list.length === 0){
+    el.innerHTML = '<div class="empty">Todavía no hay evaluaciones guardadas.</div>';
+    return;
+  }
+  el.innerHTML = list.map((ev, idx) => {
+    const fecha = ev.fechaPartido || (ev.fecha ? ev.fecha.slice(0,10) : "");
+    const detalle = [ev.equipo, fecha].filter(Boolean).join(" · ");
+    return '<div class="saved-row"><span>' + ev.nombre + (detalle ? ' <span style="color:var(--text-muted)">(' + detalle + ')</span>' : '') + '</span><button class="del" data-idx="' + idx + '">Eliminar</button></div>';
+  }).join("");
+  document.querySelectorAll(".del").forEach(b => {
+    b.addEventListener("click", e => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      const list = loadSaved();
+      list.splice(idx, 1);
+      saveSaved(list);
+      renderSavedList();
+    });
+  });
+}
+
+function setStatus(msg, color){
+  const s = document.getElementById("status");
+  s.textContent = msg;
+  s.style.color = color || "var(--text-secondary)";
+}
+
+document.getElementById("guardar").addEventListener("click", () => {
+  const nombreEl = document.getElementById("nombre");
+  const nombre = nombreEl.value.trim();
+  if (!nombre){
+    setStatus("El nombre del portero es obligatorio.", "var(--danger)");
+    nombreEl.style.borderColor = "var(--danger)";
+    nombreEl.focus();
+    return;
+  }
+  nombreEl.style.borderColor = "";
+
+  const equipo = document.getElementById("equipo").value.trim();
+  const fechaInput = document.getElementById("fecha").value;
+  const visionado = document.querySelector('input[name="visionado"]:checked').value;
+  const partido = document.getElementById("partido").value.trim();
+  const observaciones = document.getElementById("observaciones").value.trim();
+
+  const list = loadSaved();
+  list.push({
+    nombre: nombre,
+    equipo: equipo,
+    fechaPartido: fechaInput,
+    visionado: visionado,
+    partido: partido,
+    observaciones: observaciones,
+    fecha: new Date().toISOString(),
+    valores: JSON.parse(JSON.stringify(valores))
+  });
+  saveSaved(list);
+  renderSavedList();
+  setStatus("Evaluación guardada correctamente.", "var(--success)");
+  resetForm();
+});
+
+function resetForm(){
+  document.getElementById("nombre").value = "";
+  document.getElementById("equipo").value = "";
+  document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
+  document.querySelector('input[name="visionado"][value="Directo"]').checked = true;
+  document.getElementById("partido").value = "";
+  document.getElementById("observaciones").value = "";
+  DATA.forEach(s => s.items.forEach(it => { valores[it] = { nd: true, val: 2.5 }; }));
+  renderForm();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+document.getElementById("exportar").addEventListener("click", () => {
+  const list = loadSaved();
+  if (list.length === 0){
+    setStatus("No hay evaluaciones guardadas todavía.", "var(--text-secondary)");
+    return;
+  }
+  const allItems = [];
+  DATA.forEach(sec => sec.items.forEach(it => allItems.push(it)));
+
+  const headers = ["Nombre", "Equipo", "Fecha", "Tipo de visionado", "Partido", "Observaciones"].concat(allItems);
+  const rows = [headers];
+  list.forEach(ev => {
+    const row = [
+      ev.nombre,
+      ev.equipo || "",
+      ev.fechaPartido || (ev.fecha ? ev.fecha.slice(0,10) : ""),
+      ev.visionado || "",
+      ev.partido || "",
+      ev.observaciones || ""
+    ];
+    allItems.forEach(it => {
+      const v = ev.valores[it];
+      row.push((!v || v.nd) ? "N/D" : String(v.val).replace(".", ","));
+    });
+    rows.push(row);
+  });
+
+  const csv = rows.map(r => r.map(cell => {
+    const s = String(cell).replace(/"/g, '""');
+    return /[",;\n]/.test(s) ? '"' + s + '"' : s;
+  }).join(";")).join("\n");
+
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "evaluaciones_porteros.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  setStatus("Archivo exportado (" + list.length + " evaluación/es). Ábrelo con Excel o Google Sheets.", "var(--success)");
+});
+
+document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
+
+renderForm();
+renderSavedList();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+  });
+}
+</script>
+
+</body>
+</html>
