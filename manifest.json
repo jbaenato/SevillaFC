@@ -1,14 +1,880 @@
-{
-  "name": "Evaluación de porteros",
-  "short_name": "Porteros",
-  "start_url": "./index.html",
-  "scope": "./",
-  "display": "standalone",
-  "background_color": "#f4f3ef",
-  "theme_color": "#185fa5",
-  "orientation": "portrait",
-  "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
-  ]
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Porteros">
+<meta name="theme-color" content="#185fa5">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+<title>Evaluación de porteros</title>
+<style>
+  :root {
+    --bg: #f4f3ef;
+    --card: #ffffff;
+    --border: #e0ddd4;
+    --border-strong: #c9c5b8;
+    --text: #1f1e1c;
+    --text-secondary: #6b6a63;
+    --text-muted: #9a988f;
+    --accent: #185fa5;
+    --accent-bg: #e6f1fb;
+    --success: #3b6d11;
+    --danger: #a32d2d;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    max-width: 520px;
+    margin: 0 auto;
+    padding-bottom: 80px;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 8px 0 20px;
+  }
+  h2 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    color: var(--text);
+  }
+  label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 6px;
+  }
+  input[type="text"] {
+    width: 100%;
+    height: 42px;
+    padding: 0 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-size: 16px;
+    background: var(--card);
+    color: var(--text);
+  }
+  input[type="text"]:focus,
+  input[type="date"]:focus,
+  input[type="number"]:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  input[type="date"],
+  input[type="number"] {
+    width: 100%;
+    height: 42px;
+    padding: 0 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-size: 16px;
+    background: var(--card);
+    color: var(--text);
+    font-family: inherit;
+  }
+  textarea {
+    width: 100%;
+    min-height: 90px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    font-size: 16px;
+    background: var(--card);
+    color: var(--text);
+    font-family: inherit;
+    resize: vertical;
+  }
+  .radio-group {
+    display: flex;
+    gap: 16px;
+  }
+  .radio-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 15px;
+    color: var(--text);
+    margin: 0;
+  }
+  .radio-option input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    margin: 0;
+  }
+  details.section {
+    margin-bottom: 14px;
+  }
+  details.section summary {
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    padding: 12px 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  details.section summary::-webkit-details-marker { display: none; }
+  details.section summary::before {
+    content: "›";
+    display: inline-block;
+    margin-right: 8px;
+    font-size: 18px;
+    color: var(--text-muted);
+    transform: rotate(0deg);
+    transition: transform 0.15s ease;
+  }
+  details.section[open] summary::before { transform: rotate(90deg); }
+  details.section summary .section-title { flex: 1; }
+  details.section .section-avg {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    margin-left: 8px;
+  }
+  details.section .section-avg.nd { background: var(--bg); color: var(--text-muted); }
+  details.section .section-avg.set { background: var(--accent-bg); color: var(--accent); }
+  details.section[open] summary {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  details.section .card {
+    margin-bottom: 0;
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+  .suggestions {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    margin-top: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  .suggestion-item {
+    padding: 10px 12px;
+    font-size: 15px;
+    cursor: pointer;
+    border-top: 1px solid var(--border);
+  }
+  .suggestion-item:first-child { border-top: none; }
+  .suggestion-item:active { background: var(--bg); }
+  .field-group { margin-bottom: 20px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .item-row {
+    padding: 12px 14px;
+    border-top: 1px solid var(--border);
+  }
+  .item-row:first-child { border-top: none; }
+  .item-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .item-name { font-size: 14px; }
+  .item-val {
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 42px;
+    text-align: right;
+  }
+  .item-val.nd { color: var(--text-muted); }
+  .item-val.set { color: var(--accent); }
+  .item-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  input[type="range"] {
+    flex: 1;
+    height: 34px;
+    -webkit-appearance: none;
+    background: transparent;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    background: var(--border-strong);
+    border-radius: 2px;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-top: -8px;
+  }
+  input[type="range"]:disabled::-webkit-slider-thumb { background: var(--border-strong); }
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    background: var(--border-strong);
+    border-radius: 2px;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-strong);
+    background: var(--card);
+    color: var(--text);
+    padding: 10px 14px;
+    cursor: pointer;
+  }
+  button:active { transform: scale(0.98); }
+  .nd-btn { font-size: 12px; padding: 6px 10px; min-width: 46px; }
+  .nd-btn.active { background: var(--bg); border-color: var(--text-muted); color: var(--text-muted); }
+  .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .btn-primary {
+    flex: 1;
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-bg);
+  }
+  .btn-secondary { flex: 1; }
+  #status {
+    font-size: 13px;
+    text-align: center;
+    margin-top: 12px;
+    min-height: 18px;
+  }
+  .saved-section { margin-top: 28px; }
+  .saved-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .saved-row:first-child { border-top: none; }
+  .saved-row .del {
+    font-size: 12px;
+    padding: 4px 10px;
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+  .empty {
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 14px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>Evaluación de porteros</h1>
+
+<div class="field-group" style="position:relative;">
+  <label for="nombre">Nombre del portero <span style="color:var(--danger)">*</span></label>
+  <input type="text" id="nombre" placeholder="Nombre y apellidos" autocomplete="off">
+  <div id="sugerencias" class="suggestions"></div>
+</div>
+
+<div class="field-group" style="position:relative;">
+  <label for="equipo">Equipo <span style="color:var(--danger)">*</span></label>
+  <input type="text" id="equipo" placeholder="Nombre del equipo" autocomplete="off">
+  <div id="sugerenciasEquipo" class="suggestions"></div>
+</div>
+
+<div class="field-group">
+  <label>Lateralidad</label>
+  <div class="radio-group">
+    <label class="radio-option"><input type="radio" name="lateralidad" value="Derecha"> Derecha</label>
+    <label class="radio-option"><input type="radio" name="lateralidad" value="Izquierda"> Izquierda</label>
+    <label class="radio-option"><input type="radio" name="lateralidad" value="N/D" checked> N/D</label>
+  </div>
+</div>
+
+<div class="field-group">
+  <label for="anioNacimiento">Año de nacimiento <span style="color:var(--danger)">*</span></label>
+  <input type="number" id="anioNacimiento" placeholder="Ej. 2005" inputmode="numeric" min="1970" max="2015">
+</div>
+
+<div class="field-group">
+  <label for="fecha">Fecha</label>
+  <input type="date" id="fecha">
+</div>
+
+<div class="field-group">
+  <label>Tipo de visionado</label>
+  <div class="radio-group">
+    <label class="radio-option"><input type="radio" name="visionado" value="Directo" checked> Directo</label>
+    <label class="radio-option"><input type="radio" name="visionado" value="Video"> Video</label>
+  </div>
+</div>
+
+<div class="field-group">
+  <label for="partido">Partido <span style="color:var(--danger)">*</span></label>
+  <input type="text" id="partido" placeholder="Ej. Equipo A vs Equipo B">
+</div>
+
+<div id="form"></div>
+
+<div class="field-group">
+  <label for="observaciones">Observaciones</label>
+  <textarea id="observaciones" placeholder="Comentarios adicionales sobre el portero"></textarea>
+</div>
+
+<div class="field-group">
+  <label>Evaluación final</label>
+  <div class="radio-group">
+    <label class="radio-option"><input type="radio" name="evalFinal" value="A"> A</label>
+    <label class="radio-option"><input type="radio" name="evalFinal" value="B"> B</label>
+    <label class="radio-option"><input type="radio" name="evalFinal" value="C"> C</label>
+    <label class="radio-option"><input type="radio" name="evalFinal" value="D"> D</label>
+  </div>
+</div>
+
+<div class="actions">
+  <button class="btn-primary" id="guardar">Guardar evaluación</button>
+  <button class="btn-secondary" id="exportar">Exportar a Excel (CSV)</button>
+</div>
+<div id="status"></div>
+
+<div class="saved-section">
+  <h2>Evaluaciones guardadas</h2>
+  <div class="card" id="savedList"></div>
+</div>
+
+<script>
+// --- Configuración de Supabase ---
+const SUPABASE_URL = "https://ramnvcuwyfhepspzzzpn.supabase.co";
+const SUPABASE_KEY = "sb_publishable_6B6PMd8eB85OKIS1e74Qgg_YPmTaAdj";
+const TABLE = "evaluaciones";
+
+const DATA = [
+  { cat: "Ofensivo / técnico", col: "media_ofensivo_tecnico", items: ["Posición básica","Blocaje frontal/lateral","Juego aéreo","Balón largo","Juego medio/largo pies","Pierna menos dominante","Desplazamientos","Blocaje/desvío estirada","1 vs 1","Saque de puerta","Relanzamiento mano","Coordinación","Reincorporaciones","Balón dividido","Juego corto pies","Relanzamiento pie"] },
+  { cat: "Defensivo / táctico", col: "media_defensivo_tactico", items: ["Bisectriz","Posicionamiento juego vertical (def/of)","Estructuras de barrera","Distancia de barrido","Lectura de juego (def/of)","Distancia con 1pr","Apoyos ofensivos"] },
+  { cat: "Físico / condicional", col: "media_fisico_condicional", items: ["Somatotipo","Velocidad","Impulso"] },
+  { cat: "Psicológico", col: "media_psicologico", items: ["Toma de decisiones","Liderazgo"] }
+];
+
+// Mapa: nombre visible del ítem -> nombre de columna en Supabase
+const COLMAP = {
+  "Posición básica": "posicion_basica",
+  "Blocaje frontal/lateral": "blocaje_frontal_lateral",
+  "Juego aéreo": "juego_aereo",
+  "Balón largo": "balon_largo",
+  "Juego medio/largo pies": "juego_medio_largo_pies",
+  "Pierna menos dominante": "pierna_menos_dominante",
+  "Desplazamientos": "desplazamientos",
+  "Blocaje/desvío estirada": "blocaje_desvio_estirada",
+  "1 vs 1": "uno_vs_uno",
+  "Saque de puerta": "saque_puerta",
+  "Relanzamiento mano": "relanzamiento_mano",
+  "Coordinación": "coordinacion",
+  "Reincorporaciones": "reincorporaciones",
+  "Balón dividido": "balon_dividido",
+  "Juego corto pies": "juego_corto_pies",
+  "Relanzamiento pie": "relanzamiento_pie",
+  "Bisectriz": "bisectriz",
+  "Posicionamiento juego vertical (def/of)": "posicionamiento_juego_vertical",
+  "Estructuras de barrera": "estructuras_barrera",
+  "Distancia de barrido": "distancia_barrido",
+  "Lectura de juego (def/of)": "lectura_juego",
+  "Distancia con 1pr": "distancia_1pr",
+  "Apoyos ofensivos": "apoyos_ofensivos",
+  "Somatotipo": "somatotipo",
+  "Velocidad": "velocidad",
+  "Impulso": "impulso",
+  "Toma de decisiones": "toma_decisiones",
+  "Liderazgo": "liderazgo"
+};
+
+let valores = {};
+DATA.forEach(s => s.items.forEach(it => { valores[it] = { nd: true, val: 2.5 }; }));
+
+function fmt(v){ return v.toFixed(2).replace(".", ","); }
+
+function categoryAverage(sec){
+  const vals = sec.items.map(it => valores[it]).filter(v => !v.nd).map(v => v.val);
+  if (vals.length === 0) return null;
+  return vals.reduce((a,b) => a+b, 0) / vals.length;
 }
+
+function sbHeaders(extra){
+  return Object.assign({
+    "apikey": SUPABASE_KEY,
+    "Authorization": "Bearer " + SUPABASE_KEY,
+    "Content-Type": "application/json"
+  }, extra || {});
+}
+
+async function loadSaved(){
+  try {
+    const res = await fetch(
+      SUPABASE_URL + "/rest/v1/" + TABLE + "?select=*,porteros(nombre,lateralidad,anio_nacimiento),equipos(nombre)&order=created_at.desc",
+      { headers: sbHeaders() }
+    );
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return await res.json();
+  } catch(e) {
+    console.error(e);
+    return null;
+  }
+}
+
+async function insertEvaluacion(row){
+  const res = await fetch(SUPABASE_URL + "/rest/v1/" + TABLE, {
+    method: "POST",
+    headers: sbHeaders({ "Prefer": "return=minimal" }),
+    body: JSON.stringify(row)
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+}
+
+async function deleteEvaluacion(id){
+  const res = await fetch(SUPABASE_URL + "/rest/v1/" + TABLE + "?id=eq." + encodeURIComponent(id), {
+    method: "DELETE",
+    headers: sbHeaders()
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+}
+
+// Busca un portero por nombre; si no existe, lo crea. Si llegan datos nuevos de lateralidad/año, los actualiza.
+async function getOrCreatePorteroId(nombre, lateralidad, anioNacimiento){
+  const buscar = await fetch(
+    SUPABASE_URL + "/rest/v1/porteros?nombre=ilike." + encodeURIComponent(nombre) + "&select=id",
+    { headers: sbHeaders() }
+  );
+  if (!buscar.ok) throw new Error("HTTP " + buscar.status);
+  const encontrados = await buscar.json();
+
+  if (encontrados.length > 0){
+    const id = encontrados[0].id;
+    const patch = {};
+    if (lateralidad && lateralidad !== "N/D") patch.lateralidad = lateralidad;
+    if (anioNacimiento) patch.anio_nacimiento = anioNacimiento;
+    if (Object.keys(patch).length > 0){
+      await fetch(SUPABASE_URL + "/rest/v1/porteros?id=eq." + encodeURIComponent(id), {
+        method: "PATCH",
+        headers: sbHeaders({ "Prefer": "return=minimal" }),
+        body: JSON.stringify(patch)
+      });
+    }
+    return id;
+  }
+
+  const crear = await fetch(SUPABASE_URL + "/rest/v1/porteros", {
+    method: "POST",
+    headers: sbHeaders({ "Prefer": "return=representation" }),
+    body: JSON.stringify({
+      nombre: nombre,
+      lateralidad: lateralidad || "N/D",
+      anio_nacimiento: anioNacimiento || null
+    })
+  });
+  if (!crear.ok) throw new Error("HTTP " + crear.status);
+  const creado = await crear.json();
+  return creado[0].id;
+}
+
+let porterosDisponibles = [];
+let equiposDisponibles = [];
+
+// Busca un equipo por nombre; si no existe, lo crea.
+async function getOrCreateEquipoId(nombre){
+  const buscar = await fetch(
+    SUPABASE_URL + "/rest/v1/equipos?nombre=ilike." + encodeURIComponent(nombre) + "&select=id",
+    { headers: sbHeaders() }
+  );
+  if (!buscar.ok) throw new Error("HTTP " + buscar.status);
+  const encontrados = await buscar.json();
+  if (encontrados.length > 0) return encontrados[0].id;
+
+  const crear = await fetch(SUPABASE_URL + "/rest/v1/equipos", {
+    method: "POST",
+    headers: sbHeaders({ "Prefer": "return=representation" }),
+    body: JSON.stringify({ nombre: nombre })
+  });
+  if (!crear.ok) throw new Error("HTTP " + crear.status);
+  const creado = await crear.json();
+  return creado[0].id;
+}
+
+async function cargarListaPorteros(){
+  try {
+    const res = await fetch(SUPABASE_URL + "/rest/v1/porteros?select=nombre&order=nombre.asc", { headers: sbHeaders() });
+    if (!res.ok) return;
+    const porteros = await res.json();
+    porterosDisponibles = porteros.map(p => p.nombre);
+  } catch(e) { /* silencioso: el autocompletado es un extra, no crítico */ }
+}
+
+async function cargarListaEquipos(){
+  try {
+    const res = await fetch(SUPABASE_URL + "/rest/v1/equipos?select=nombre&order=nombre.asc", { headers: sbHeaders() });
+    if (!res.ok) return;
+    const equipos = await res.json();
+    equiposDisponibles = equipos.map(e => e.nombre);
+  } catch(e) { /* silencioso: el autocompletado es un extra, no crítico */ }
+}
+
+// Extrae el nombre del portero embebido en la respuesta de Supabase (select=*,porteros(nombre))
+function nombrePorteroDe(ev){
+  if (!ev.porteros) return "(portero eliminado)";
+  return Array.isArray(ev.porteros) ? (ev.porteros[0] ? ev.porteros[0].nombre : "") : ev.porteros.nombre;
+}
+
+// Extrae el nombre del equipo embebido en la respuesta de Supabase (select=*,equipos(nombre))
+function nombreEquipoDe(ev){
+  if (!ev.equipos) return "";
+  return Array.isArray(ev.equipos) ? (ev.equipos[0] ? ev.equipos[0].nombre : "") : ev.equipos.nombre;
+}
+
+function porteroCampo(ev, campo){
+  if (!ev.porteros) return "";
+  const p = Array.isArray(ev.porteros) ? ev.porteros[0] : ev.porteros;
+  return (p && p[campo] !== null && p[campo] !== undefined) ? p[campo] : "";
+}
+
+function renderForm(){
+  const form = document.getElementById("form");
+
+  // Recordar qué secciones estaban abiertas antes de reconstruir el HTML
+  const openState = {};
+  form.querySelectorAll("details.section").forEach(d => { openState[d.dataset.cat] = d.open; });
+
+  let html = "";
+  DATA.forEach((sec, si) => {
+    const avg = categoryAverage(sec);
+    const isOpen = openState.hasOwnProperty(sec.cat) ? openState[sec.cat] : false;
+    html += '<details class="section" data-cat="' + sec.cat + '" ' + (isOpen ? 'open' : '') + '>';
+    html += '<summary><span class="section-title">' + sec.cat + '</span><span class="section-avg ' + (avg === null ? 'nd' : 'set') + '">Media: ' + (avg === null ? 'N/D' : fmt(avg)) + '</span></summary>';
+    html += '<div class="card">';
+    sec.items.forEach((it, ii) => {
+      const v = valores[it];
+      html += '<div class="item-row">';
+      html += '<div class="item-top">';
+      html += '<span class="item-name">' + it + '</span>';
+      html += '<span class="item-val ' + (v.nd ? 'nd' : 'set') + '">' + (v.nd ? 'N/D' : fmt(v.val)) + '</span>';
+      html += '</div>';
+      html += '<div class="item-controls">';
+      html += '<input type="range" min="0" max="5" step="0.5" value="' + v.val + '" data-item="' + si + '_' + ii + '" class="slider" ' + (v.nd ? 'disabled' : '') + '>';
+      html += '<button class="nd-btn ' + (v.nd ? 'active' : '') + '" data-nd="' + si + '_' + ii + '">N/D</button>';
+      html += '</div></div>';
+    });
+    html += '</div></details>';
+  });
+  form.innerHTML = html;
+
+  document.querySelectorAll(".slider").forEach(s => {
+    s.addEventListener("input", e => {
+      const [si, ii] = e.target.dataset.item.split("_").map(Number);
+      const it = DATA[si].items[ii];
+      valores[it].val = parseFloat(e.target.value);
+      renderForm();
+    });
+  });
+
+  document.querySelectorAll(".nd-btn").forEach(b => {
+    b.addEventListener("click", e => {
+      const [si, ii] = e.target.dataset.nd.split("_").map(Number);
+      const it = DATA[si].items[ii];
+      valores[it].nd = !valores[it].nd;
+      renderForm();
+    });
+  });
+}
+
+async function renderSavedList(){
+  const el = document.getElementById("savedList");
+  el.innerHTML = '<div class="empty">Cargando evaluaciones…</div>';
+  const list = await loadSaved();
+  if (list === null){
+    el.innerHTML = '<div class="empty">No se ha podido conectar con la base de datos. Comprueba tu conexión.</div>';
+    return;
+  }
+  if (list.length === 0){
+    el.innerHTML = '<div class="empty">Todavía no hay evaluaciones guardadas.</div>';
+    return;
+  }
+  el.innerHTML = list.map((ev) => {
+    const fecha = ev.fecha_partido || (ev.created_at ? ev.created_at.slice(0,10) : "");
+    const detalle = [nombreEquipoDe(ev), fecha].filter(Boolean).join(" · ");
+    return '<div class="saved-row"><span>' + nombrePorteroDe(ev) + (detalle ? ' <span style="color:var(--text-muted)">(' + detalle + ')</span>' : '') + '</span><button class="del" data-id="' + ev.id + '">Eliminar</button></div>';
+  }).join("");
+  document.querySelectorAll(".del").forEach(b => {
+    b.addEventListener("click", async e => {
+      const id = e.target.dataset.id;
+      e.target.disabled = true;
+      try {
+        await deleteEvaluacion(id);
+        renderSavedList();
+      } catch(err){
+        setStatus("No se pudo eliminar la evaluación.", "var(--danger)");
+        e.target.disabled = false;
+      }
+    });
+  });
+}
+
+function setStatus(msg, color){
+  const s = document.getElementById("status");
+  s.textContent = msg;
+  s.style.color = color || "var(--text-secondary)";
+}
+
+document.getElementById("guardar").addEventListener("click", async () => {
+  const nombreEl = document.getElementById("nombre");
+  const nombre = nombreEl.value.trim();
+  if (!nombre){
+    setStatus("El nombre del portero es obligatorio.", "var(--danger)");
+    nombreEl.style.borderColor = "var(--danger)";
+    nombreEl.focus();
+    return;
+  }
+  nombreEl.style.borderColor = "";
+
+  const anioEl = document.getElementById("anioNacimiento");
+  const anioNacimiento = parseInt(anioEl.value, 10) || null;
+  if (!anioNacimiento){
+    setStatus("El año de nacimiento es obligatorio.", "var(--danger)");
+    anioEl.style.borderColor = "var(--danger)";
+    anioEl.focus();
+    return;
+  }
+  anioEl.style.borderColor = "";
+
+  const equipoEl = document.getElementById("equipo");
+  const equipo = equipoEl.value.trim();
+  if (!equipo){
+    setStatus("El equipo es obligatorio.", "var(--danger)");
+    equipoEl.style.borderColor = "var(--danger)";
+    equipoEl.focus();
+    return;
+  }
+  equipoEl.style.borderColor = "";
+
+  const lateralidad = document.querySelector('input[name="lateralidad"]:checked').value;
+  const fechaInput = document.getElementById("fecha").value;
+  const visionado = document.querySelector('input[name="visionado"]:checked').value;
+  const partidoEl = document.getElementById("partido");
+  const partido = partidoEl.value.trim();
+  if (!partido){
+    setStatus("El partido es obligatorio.", "var(--danger)");
+    partidoEl.style.borderColor = "var(--danger)";
+    partidoEl.focus();
+    return;
+  }
+  partidoEl.style.borderColor = "";
+
+  const observaciones = document.getElementById("observaciones").value.trim();
+  const evalFinalEl = document.querySelector('input[name="evalFinal"]:checked');
+  const evaluacionFinal = evalFinalEl ? evalFinalEl.value : null;
+
+  const row = {
+    fecha_partido: fechaInput || null,
+    tipo_visionado: visionado,
+    partido: partido || null,
+    observaciones: observaciones || null,
+    evaluacion_final: evaluacionFinal
+  };
+  DATA.forEach(sec => sec.items.forEach(it => {
+    const v = valores[it];
+    row[COLMAP[it]] = v.nd ? null : v.val;
+  }));
+  DATA.forEach(sec => {
+    const avg = categoryAverage(sec);
+    row[sec.col] = avg === null ? null : Math.round(avg * 100) / 100;
+  });
+
+  const guardarBtn = document.getElementById("guardar");
+  guardarBtn.disabled = true;
+  setStatus("Guardando…", "var(--text-secondary)");
+  try {
+    row.portero_id = await getOrCreatePorteroId(nombre, lateralidad, anioNacimiento);
+    row.equipo_id = await getOrCreateEquipoId(equipo);
+    await insertEvaluacion(row);
+    setStatus("Evaluación guardada correctamente.", "var(--success)");
+    resetForm();
+    renderSavedList();
+    cargarListaPorteros();
+    cargarListaEquipos();
+  } catch(err){
+    setStatus("No se pudo guardar. Comprueba tu conexión e inténtalo de nuevo.", "var(--danger)");
+  }
+  guardarBtn.disabled = false;
+});
+
+function resetForm(){
+  document.getElementById("nombre").value = "";
+  document.getElementById("sugerencias").style.display = "none";
+  document.getElementById("equipo").value = "";
+  document.getElementById("sugerenciasEquipo").style.display = "none";
+  document.querySelector('input[name="lateralidad"][value="N/D"]').checked = true;
+  document.getElementById("anioNacimiento").value = "";
+  document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
+  document.querySelector('input[name="visionado"][value="Directo"]').checked = true;
+  document.getElementById("partido").value = "";
+  document.getElementById("observaciones").value = "";
+  document.querySelectorAll('input[name="evalFinal"]').forEach(r => { r.checked = false; });
+  DATA.forEach(s => s.items.forEach(it => { valores[it] = { nd: true, val: 2.5 }; }));
+  renderForm();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+document.getElementById("exportar").addEventListener("click", async () => {
+  setStatus("Preparando exportación…", "var(--text-secondary)");
+  const list = await loadSaved();
+  if (list === null){
+    setStatus("No se ha podido conectar con la base de datos.", "var(--danger)");
+    return;
+  }
+  if (list.length === 0){
+    setStatus("No hay evaluaciones guardadas todavía.", "var(--text-secondary)");
+    return;
+  }
+  const allItems = [];
+  DATA.forEach(sec => sec.items.forEach(it => allItems.push(it)));
+
+  const headers = ["Nombre", "Lateralidad", "Año nacimiento", "Equipo", "Fecha", "Tipo de visionado", "Partido", "Observaciones", "Evaluación final"]
+    .concat(DATA.map(sec => "Media " + sec.cat))
+    .concat(allItems);
+  const rows = [headers];
+  list.forEach(ev => {
+    const row = [
+      nombrePorteroDe(ev),
+      porteroCampo(ev, "lateralidad") || "N/D",
+      porteroCampo(ev, "anio_nacimiento"),
+      nombreEquipoDe(ev),
+      ev.fecha_partido || (ev.created_at ? ev.created_at.slice(0,10) : ""),
+      ev.tipo_visionado || "",
+      ev.partido || "",
+      ev.observaciones || "",
+      ev.evaluacion_final || ""
+    ];
+    DATA.forEach(sec => {
+      const v = ev[sec.col];
+      row.push((v === null || v === undefined) ? "N/D" : String(v).replace(".", ","));
+    });
+    allItems.forEach(it => {
+      const v = ev[COLMAP[it]];
+      row.push((v === null || v === undefined) ? "N/D" : String(v).replace(".", ","));
+    });
+    rows.push(row);
+  });
+
+  const csv = rows.map(r => r.map(cell => {
+    const s = String(cell).replace(/"/g, '""');
+    return /[",;\n]/.test(s) ? '"' + s + '"' : s;
+  }).join(";")).join("\n");
+
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "evaluaciones_porteros.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  setStatus("Archivo exportado (" + list.length + " evaluación/es). Ábrelo con Excel o Google Sheets.", "var(--success)");
+});
+
+document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
+
+renderForm();
+renderSavedList();
+cargarListaPorteros();
+cargarListaEquipos();
+
+function activarAutocompletado(inputEl, contenedorEl, obtenerLista){
+  function mostrar(){
+    const filtro = inputEl.value.trim().toLowerCase();
+    if (!filtro){
+      contenedorEl.style.display = "none";
+      contenedorEl.innerHTML = "";
+      return;
+    }
+    const coincidencias = obtenerLista().filter(n => n.toLowerCase().includes(filtro));
+    if (coincidencias.length === 0){
+      contenedorEl.style.display = "none";
+      contenedorEl.innerHTML = "";
+      return;
+    }
+    contenedorEl.innerHTML = coincidencias.map(n =>
+      '<div class="suggestion-item">' + n.replace(/</g,"&lt;") + '</div>'
+    ).join("");
+    contenedorEl.style.display = "block";
+  }
+
+  inputEl.addEventListener("input", mostrar);
+  inputEl.addEventListener("focus", mostrar);
+
+  contenedorEl.addEventListener("click", e => {
+    const item = e.target.closest(".suggestion-item");
+    if (!item) return;
+    inputEl.value = item.textContent;
+    contenedorEl.style.display = "none";
+    contenedorEl.innerHTML = "";
+  });
+
+  document.addEventListener("click", e => {
+    if (e.target !== inputEl && !contenedorEl.contains(e.target)){
+      contenedorEl.style.display = "none";
+    }
+  });
+}
+
+activarAutocompletado(document.getElementById("nombre"), document.getElementById("sugerencias"), () => porterosDisponibles);
+activarAutocompletado(document.getElementById("equipo"), document.getElementById("sugerenciasEquipo"), () => equiposDisponibles);
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+  });
+}
+</script>
+
+</body>
+</html>

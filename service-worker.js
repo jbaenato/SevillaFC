@@ -1,4 +1,4 @@
-const CACHE_NAME = "porteros-cache-v8";
+const CACHE_NAME = "porteros-cache-v11";
 const FILES_TO_CACHE = [
   "./index.html",
   "./manifest.json",
