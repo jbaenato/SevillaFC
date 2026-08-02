@@ -114,6 +114,53 @@
     accent-color: var(--accent);
     margin: 0;
   }
+  details.section {
+    margin-bottom: 14px;
+  }
+  details.section summary {
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    padding: 12px 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  details.section summary::-webkit-details-marker { display: none; }
+  details.section summary::before {
+    content: "›";
+    display: inline-block;
+    margin-right: 8px;
+    font-size: 18px;
+    color: var(--text-muted);
+    transform: rotate(0deg);
+    transition: transform 0.15s ease;
+  }
+  details.section[open] summary::before { transform: rotate(90deg); }
+  details.section summary .section-title { flex: 1; }
+  details.section .section-avg {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    margin-left: 8px;
+  }
+  details.section .section-avg.nd { background: var(--bg); color: var(--text-muted); }
+  details.section .section-avg.set { background: var(--accent-bg); color: var(--accent); }
+  details.section[open] summary {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  details.section .card {
+    margin-bottom: 0;
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
   .field-group { margin-bottom: 20px; }
   .card {
     background: var(--card);
@@ -242,7 +289,8 @@
 
 <div class="field-group">
   <label for="nombre">Nombre del portero <span style="color:var(--danger)">*</span></label>
-  <input type="text" id="nombre" placeholder="Nombre y apellidos">
+  <input type="text" id="nombre" list="listaPorteros" placeholder="Nombre y apellidos" autocomplete="off">
+  <datalist id="listaPorteros"></datalist>
 </div>
 
 <div class="field-group">
@@ -287,36 +335,150 @@
 </div>
 
 <script>
+// --- Configuración de Supabase ---
+const SUPABASE_URL = "https://ramnvcuwyfhepspzzzpn.supabase.co";
+const SUPABASE_KEY = "sb_publishable_6B6PMd8eB85OKIS1e74Qgg_YPmTaAdj";
+const TABLE = "evaluaciones";
+
 const DATA = [
-  { cat: "Ofensivo / técnico", items: ["Posición básica","Blocaje frontal/lateral","Juego aéreo","Balón largo","Juego medio/largo pies","Pierna menos dominante","Desplazamientos","Blocaje/desvío estirada","1 vs 1","Saque de puerta","Relanzamiento mano","Coordinación","Reincorporaciones","Balón dividido","Juego corto pies","Relanzamiento pie"] },
-  { cat: "Defensivo / táctico", items: ["Bisectriz","Posicionamiento juego vertical (def/of)","Estructuras de barrera","Distancia de barrido","Lectura de juego (def/of)","Distancia con 1pr","Apoyos ofensivos"] },
-  { cat: "Físico / condicional", items: ["Somatotipo","Velocidad","Impulso"] },
-  { cat: "Psicológico", items: ["Toma de decisiones","Liderazgo"] }
+  { cat: "Ofensivo / técnico", col: "media_ofensivo_tecnico", items: ["Posición básica","Blocaje frontal/lateral","Juego aéreo","Balón largo","Juego medio/largo pies","Pierna menos dominante","Desplazamientos","Blocaje/desvío estirada","1 vs 1","Saque de puerta","Relanzamiento mano","Coordinación","Reincorporaciones","Balón dividido","Juego corto pies","Relanzamiento pie"] },
+  { cat: "Defensivo / táctico", col: "media_defensivo_tactico", items: ["Bisectriz","Posicionamiento juego vertical (def/of)","Estructuras de barrera","Distancia de barrido","Lectura de juego (def/of)","Distancia con 1pr","Apoyos ofensivos"] },
+  { cat: "Físico / condicional", col: "media_fisico_condicional", items: ["Somatotipo","Velocidad","Impulso"] },
+  { cat: "Psicológico", col: "media_psicologico", items: ["Toma de decisiones","Liderazgo"] }
 ];
 
-const STORAGE_KEY = "gk_evaluaciones";
+// Mapa: nombre visible del ítem -> nombre de columna en Supabase
+const COLMAP = {
+  "Posición básica": "posicion_basica",
+  "Blocaje frontal/lateral": "blocaje_frontal_lateral",
+  "Juego aéreo": "juego_aereo",
+  "Balón largo": "balon_largo",
+  "Juego medio/largo pies": "juego_medio_largo_pies",
+  "Pierna menos dominante": "pierna_menos_dominante",
+  "Desplazamientos": "desplazamientos",
+  "Blocaje/desvío estirada": "blocaje_desvio_estirada",
+  "1 vs 1": "uno_vs_uno",
+  "Saque de puerta": "saque_puerta",
+  "Relanzamiento mano": "relanzamiento_mano",
+  "Coordinación": "coordinacion",
+  "Reincorporaciones": "reincorporaciones",
+  "Balón dividido": "balon_dividido",
+  "Juego corto pies": "juego_corto_pies",
+  "Relanzamiento pie": "relanzamiento_pie",
+  "Bisectriz": "bisectriz",
+  "Posicionamiento juego vertical (def/of)": "posicionamiento_juego_vertical",
+  "Estructuras de barrera": "estructuras_barrera",
+  "Distancia de barrido": "distancia_barrido",
+  "Lectura de juego (def/of)": "lectura_juego",
+  "Distancia con 1pr": "distancia_1pr",
+  "Apoyos ofensivos": "apoyos_ofensivos",
+  "Somatotipo": "somatotipo",
+  "Velocidad": "velocidad",
+  "Impulso": "impulso",
+  "Toma de decisiones": "toma_decisiones",
+  "Liderazgo": "liderazgo"
+};
 
 let valores = {};
 DATA.forEach(s => s.items.forEach(it => { valores[it] = { nd: true, val: 2.5 }; }));
 
 function fmt(v){ return v.toFixed(2).replace(".", ","); }
 
-function loadSaved(){
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch(e) { return []; }
+function categoryAverage(sec){
+  const vals = sec.items.map(it => valores[it]).filter(v => !v.nd).map(v => v.val);
+  if (vals.length === 0) return null;
+  return vals.reduce((a,b) => a+b, 0) / vals.length;
 }
 
-function saveSaved(list){
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+function sbHeaders(extra){
+  return Object.assign({
+    "apikey": SUPABASE_KEY,
+    "Authorization": "Bearer " + SUPABASE_KEY,
+    "Content-Type": "application/json"
+  }, extra || {});
+}
+
+async function loadSaved(){
+  try {
+    const res = await fetch(
+      SUPABASE_URL + "/rest/v1/" + TABLE + "?select=*,porteros(nombre)&order=created_at.desc",
+      { headers: sbHeaders() }
+    );
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return await res.json();
+  } catch(e) {
+    console.error(e);
+    return null;
+  }
+}
+
+async function insertEvaluacion(row){
+  const res = await fetch(SUPABASE_URL + "/rest/v1/" + TABLE, {
+    method: "POST",
+    headers: sbHeaders({ "Prefer": "return=minimal" }),
+    body: JSON.stringify(row)
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+}
+
+async function deleteEvaluacion(id){
+  const res = await fetch(SUPABASE_URL + "/rest/v1/" + TABLE + "?id=eq." + encodeURIComponent(id), {
+    method: "DELETE",
+    headers: sbHeaders()
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+}
+
+// Busca un portero por nombre (sin distinguir mayúsculas/tildes exactas); si no existe, lo crea.
+async function getOrCreatePorteroId(nombre){
+  const buscar = await fetch(
+    SUPABASE_URL + "/rest/v1/porteros?nombre=ilike." + encodeURIComponent(nombre) + "&select=id",
+    { headers: sbHeaders() }
+  );
+  if (!buscar.ok) throw new Error("HTTP " + buscar.status);
+  const encontrados = await buscar.json();
+  if (encontrados.length > 0) return encontrados[0].id;
+
+  const crear = await fetch(SUPABASE_URL + "/rest/v1/porteros", {
+    method: "POST",
+    headers: sbHeaders({ "Prefer": "return=representation" }),
+    body: JSON.stringify({ nombre: nombre })
+  });
+  if (!crear.ok) throw new Error("HTTP " + crear.status);
+  const creado = await crear.json();
+  return creado[0].id;
+}
+
+async function cargarListaPorteros(){
+  try {
+    const res = await fetch(SUPABASE_URL + "/rest/v1/porteros?select=nombre&order=nombre.asc", { headers: sbHeaders() });
+    if (!res.ok) return;
+    const porteros = await res.json();
+    const datalist = document.getElementById("listaPorteros");
+    datalist.innerHTML = porteros.map(p => '<option value="' + p.nombre.replace(/"/g,"&quot;") + '">').join("");
+  } catch(e) { /* silencioso: el autocompletado es un extra, no crítico */ }
+}
+
+// Extrae el nombre del portero embebido en la respuesta de Supabase (select=*,porteros(nombre))
+function nombrePorteroDe(ev){
+  if (!ev.porteros) return "(portero eliminado)";
+  return Array.isArray(ev.porteros) ? (ev.porteros[0] ? ev.porteros[0].nombre : "") : ev.porteros.nombre;
 }
 
 function renderForm(){
   const form = document.getElementById("form");
+
+  // Recordar qué secciones estaban abiertas antes de reconstruir el HTML
+  const openState = {};
+  form.querySelectorAll("details.section").forEach(d => { openState[d.dataset.cat] = d.open; });
+
   let html = "";
   DATA.forEach((sec, si) => {
-    html += '<h2>' + sec.cat + '</h2><div class="card">';
+    const avg = categoryAverage(sec);
+    const isOpen = openState.hasOwnProperty(sec.cat) ? openState[sec.cat] : false;
+    html += '<details class="section" data-cat="' + sec.cat + '" ' + (isOpen ? 'open' : '') + '>';
+    html += '<summary><span class="section-title">' + sec.cat + '</span><span class="section-avg ' + (avg === null ? 'nd' : 'set') + '">Media: ' + (avg === null ? 'N/D' : fmt(avg)) + '</span></summary>';
+    html += '<div class="card">';
     sec.items.forEach((it, ii) => {
       const v = valores[it];
       html += '<div class="item-row">';
@@ -329,7 +491,7 @@ function renderForm(){
       html += '<button class="nd-btn ' + (v.nd ? 'active' : '') + '" data-nd="' + si + '_' + ii + '">N/D</button>';
       html += '</div></div>';
     });
-    html += '</div>';
+    html += '</div></details>';
   });
   form.innerHTML = html;
 
@@ -352,25 +514,34 @@ function renderForm(){
   });
 }
 
-function renderSavedList(){
-  const list = loadSaved();
+async function renderSavedList(){
   const el = document.getElementById("savedList");
+  el.innerHTML = '<div class="empty">Cargando evaluaciones…</div>';
+  const list = await loadSaved();
+  if (list === null){
+    el.innerHTML = '<div class="empty">No se ha podido conectar con la base de datos. Comprueba tu conexión.</div>';
+    return;
+  }
   if (list.length === 0){
     el.innerHTML = '<div class="empty">Todavía no hay evaluaciones guardadas.</div>';
     return;
   }
-  el.innerHTML = list.map((ev, idx) => {
-    const fecha = ev.fechaPartido || (ev.fecha ? ev.fecha.slice(0,10) : "");
+  el.innerHTML = list.map((ev) => {
+    const fecha = ev.fecha_partido || (ev.created_at ? ev.created_at.slice(0,10) : "");
     const detalle = [ev.equipo, fecha].filter(Boolean).join(" · ");
-    return '<div class="saved-row"><span>' + ev.nombre + (detalle ? ' <span style="color:var(--text-muted)">(' + detalle + ')</span>' : '') + '</span><button class="del" data-idx="' + idx + '">Eliminar</button></div>';
+    return '<div class="saved-row"><span>' + nombrePorteroDe(ev) + (detalle ? ' <span style="color:var(--text-muted)">(' + detalle + ')</span>' : '') + '</span><button class="del" data-id="' + ev.id + '">Eliminar</button></div>';
   }).join("");
   document.querySelectorAll(".del").forEach(b => {
-    b.addEventListener("click", e => {
-      const idx = parseInt(e.target.dataset.idx, 10);
-      const list = loadSaved();
-      list.splice(idx, 1);
-      saveSaved(list);
-      renderSavedList();
+    b.addEventListener("click", async e => {
+      const id = e.target.dataset.id;
+      e.target.disabled = true;
+      try {
+        await deleteEvaluacion(id);
+        renderSavedList();
+      } catch(err){
+        setStatus("No se pudo eliminar la evaluación.", "var(--danger)");
+        e.target.disabled = false;
+      }
     });
   });
 }
@@ -381,7 +552,7 @@ function setStatus(msg, color){
   s.style.color = color || "var(--text-secondary)";
 }
 
-document.getElementById("guardar").addEventListener("click", () => {
+document.getElementById("guardar").addEventListener("click", async () => {
   const nombreEl = document.getElementById("nombre");
   const nombre = nombreEl.value.trim();
   if (!nombre){
@@ -398,21 +569,36 @@ document.getElementById("guardar").addEventListener("click", () => {
   const partido = document.getElementById("partido").value.trim();
   const observaciones = document.getElementById("observaciones").value.trim();
 
-  const list = loadSaved();
-  list.push({
-    nombre: nombre,
-    equipo: equipo,
-    fechaPartido: fechaInput,
-    visionado: visionado,
-    partido: partido,
-    observaciones: observaciones,
-    fecha: new Date().toISOString(),
-    valores: JSON.parse(JSON.stringify(valores))
+  const row = {
+    equipo: equipo || null,
+    fecha_partido: fechaInput || null,
+    tipo_visionado: visionado,
+    partido: partido || null,
+    observaciones: observaciones || null
+  };
+  DATA.forEach(sec => sec.items.forEach(it => {
+    const v = valores[it];
+    row[COLMAP[it]] = v.nd ? null : v.val;
+  }));
+  DATA.forEach(sec => {
+    const avg = categoryAverage(sec);
+    row[sec.col] = avg === null ? null : Math.round(avg * 100) / 100;
   });
-  saveSaved(list);
-  renderSavedList();
-  setStatus("Evaluación guardada correctamente.", "var(--success)");
-  resetForm();
+
+  const guardarBtn = document.getElementById("guardar");
+  guardarBtn.disabled = true;
+  setStatus("Guardando…", "var(--text-secondary)");
+  try {
+    row.portero_id = await getOrCreatePorteroId(nombre);
+    await insertEvaluacion(row);
+    setStatus("Evaluación guardada correctamente.", "var(--success)");
+    resetForm();
+    renderSavedList();
+    cargarListaPorteros();
+  } catch(err){
+    setStatus("No se pudo guardar. Comprueba tu conexión e inténtalo de nuevo.", "var(--danger)");
+  }
+  guardarBtn.disabled = false;
 });
 
 function resetForm(){
@@ -427,8 +613,13 @@ function resetForm(){
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-document.getElementById("exportar").addEventListener("click", () => {
-  const list = loadSaved();
+document.getElementById("exportar").addEventListener("click", async () => {
+  setStatus("Preparando exportación…", "var(--text-secondary)");
+  const list = await loadSaved();
+  if (list === null){
+    setStatus("No se ha podido conectar con la base de datos.", "var(--danger)");
+    return;
+  }
   if (list.length === 0){
     setStatus("No hay evaluaciones guardadas todavía.", "var(--text-secondary)");
     return;
@@ -436,20 +627,26 @@ document.getElementById("exportar").addEventListener("click", () => {
   const allItems = [];
   DATA.forEach(sec => sec.items.forEach(it => allItems.push(it)));
 
-  const headers = ["Nombre", "Equipo", "Fecha", "Tipo de visionado", "Partido", "Observaciones"].concat(allItems);
+  const headers = ["Nombre", "Equipo", "Fecha", "Tipo de visionado", "Partido", "Observaciones"]
+    .concat(DATA.map(sec => "Media " + sec.cat))
+    .concat(allItems);
   const rows = [headers];
   list.forEach(ev => {
     const row = [
-      ev.nombre,
+      nombrePorteroDe(ev),
       ev.equipo || "",
-      ev.fechaPartido || (ev.fecha ? ev.fecha.slice(0,10) : ""),
-      ev.visionado || "",
+      ev.fecha_partido || (ev.created_at ? ev.created_at.slice(0,10) : ""),
+      ev.tipo_visionado || "",
       ev.partido || "",
       ev.observaciones || ""
     ];
+    DATA.forEach(sec => {
+      const v = ev[sec.col];
+      row.push((v === null || v === undefined) ? "N/D" : String(v).replace(".", ","));
+    });
     allItems.forEach(it => {
-      const v = ev.valores[it];
-      row.push((!v || v.nd) ? "N/D" : String(v.val).replace(".", ","));
+      const v = ev[COLMAP[it]];
+      row.push((v === null || v === undefined) ? "N/D" : String(v).replace(".", ","));
     });
     rows.push(row);
   });
@@ -476,6 +673,7 @@ document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
 
 renderForm();
 renderSavedList();
+cargarListaPorteros();
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
