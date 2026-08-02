@@ -69,11 +69,13 @@
   }
   input[type="text"]:focus,
   input[type="date"]:focus,
+  input[type="number"]:focus,
   textarea:focus {
     outline: none;
     border-color: var(--accent);
   }
-  input[type="date"] {
+  input[type="date"],
+  input[type="number"] {
     width: 100%;
     height: 42px;
     padding: 0 12px;
@@ -161,6 +163,29 @@
     border-top-left-radius: 0;
     border-top-right-radius: 0;
   }
+  .suggestions {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    background: var(--card);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    margin-top: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  .suggestion-item {
+    padding: 10px 12px;
+    font-size: 15px;
+    cursor: pointer;
+    border-top: 1px solid var(--border);
+  }
+  .suggestion-item:first-child { border-top: none; }
+  .suggestion-item:active { background: var(--bg); }
   .field-group { margin-bottom: 20px; }
   .card {
     background: var(--card);
@@ -287,15 +312,30 @@
 
 <h1>Evaluación de porteros</h1>
 
-<div class="field-group">
+<div class="field-group" style="position:relative;">
   <label for="nombre">Nombre del portero <span style="color:var(--danger)">*</span></label>
-  <input type="text" id="nombre" list="listaPorteros" placeholder="Nombre y apellidos" autocomplete="off">
-  <datalist id="listaPorteros"></datalist>
+  <input type="text" id="nombre" placeholder="Nombre y apellidos" autocomplete="off">
+  <div id="sugerencias" class="suggestions"></div>
+</div>
+
+<div class="field-group" style="position:relative;">
+  <label for="equipo">Equipo</label>
+  <input type="text" id="equipo" placeholder="Nombre del equipo" autocomplete="off">
+  <div id="sugerenciasEquipo" class="suggestions"></div>
 </div>
 
 <div class="field-group">
-  <label for="equipo">Equipo</label>
-  <input type="text" id="equipo" placeholder="Nombre del equipo">
+  <label>Lateralidad</label>
+  <div class="radio-group">
+    <label class="radio-option"><input type="radio" name="lateralidad" value="Derecha"> Derecha</label>
+    <label class="radio-option"><input type="radio" name="lateralidad" value="Izquierda"> Izquierda</label>
+    <label class="radio-option"><input type="radio" name="lateralidad" value="N/D" checked> N/D</label>
+  </div>
+</div>
+
+<div class="field-group">
+  <label for="anioNacimiento">Año de nacimiento</label>
+  <input type="number" id="anioNacimiento" placeholder="Ej. 2005" inputmode="numeric" min="1970" max="2015">
 </div>
 
 <div class="field-group">
@@ -321,6 +361,16 @@
 <div class="field-group">
   <label for="observaciones">Observaciones</label>
   <textarea id="observaciones" placeholder="Comentarios adicionales sobre el portero"></textarea>
+</div>
+
+<div class="field-group">
+  <label>Evaluación final</label>
+  <div class="radio-group">
+    <label class="radio-option"><input type="radio" name="evalFinal" value="A"> A</label>
+    <label class="radio-option"><input type="radio" name="evalFinal" value="B"> B</label>
+    <label class="radio-option"><input type="radio" name="evalFinal" value="C"> C</label>
+    <label class="radio-option"><input type="radio" name="evalFinal" value="D"> D</label>
+  </div>
 </div>
 
 <div class="actions">
@@ -401,7 +451,7 @@ function sbHeaders(extra){
 async function loadSaved(){
   try {
     const res = await fetch(
-      SUPABASE_URL + "/rest/v1/" + TABLE + "?select=*,porteros(nombre)&order=created_at.desc",
+      SUPABASE_URL + "/rest/v1/" + TABLE + "?select=*,porteros(nombre,lateralidad,anio_nacimiento),equipos(nombre)&order=created_at.desc",
       { headers: sbHeaders() }
     );
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -429,17 +479,58 @@ async function deleteEvaluacion(id){
   if (!res.ok) throw new Error("HTTP " + res.status);
 }
 
-// Busca un portero por nombre (sin distinguir mayúsculas/tildes exactas); si no existe, lo crea.
-async function getOrCreatePorteroId(nombre){
+// Busca un portero por nombre; si no existe, lo crea. Si llegan datos nuevos de lateralidad/año, los actualiza.
+async function getOrCreatePorteroId(nombre, lateralidad, anioNacimiento){
   const buscar = await fetch(
     SUPABASE_URL + "/rest/v1/porteros?nombre=ilike." + encodeURIComponent(nombre) + "&select=id",
     { headers: sbHeaders() }
   );
   if (!buscar.ok) throw new Error("HTTP " + buscar.status);
   const encontrados = await buscar.json();
-  if (encontrados.length > 0) return encontrados[0].id;
+
+  if (encontrados.length > 0){
+    const id = encontrados[0].id;
+    const patch = {};
+    if (lateralidad && lateralidad !== "N/D") patch.lateralidad = lateralidad;
+    if (anioNacimiento) patch.anio_nacimiento = anioNacimiento;
+    if (Object.keys(patch).length > 0){
+      await fetch(SUPABASE_URL + "/rest/v1/porteros?id=eq." + encodeURIComponent(id), {
+        method: "PATCH",
+        headers: sbHeaders({ "Prefer": "return=minimal" }),
+        body: JSON.stringify(patch)
+      });
+    }
+    return id;
+  }
 
   const crear = await fetch(SUPABASE_URL + "/rest/v1/porteros", {
+    method: "POST",
+    headers: sbHeaders({ "Prefer": "return=representation" }),
+    body: JSON.stringify({
+      nombre: nombre,
+      lateralidad: lateralidad || "N/D",
+      anio_nacimiento: anioNacimiento || null
+    })
+  });
+  if (!crear.ok) throw new Error("HTTP " + crear.status);
+  const creado = await crear.json();
+  return creado[0].id;
+}
+
+let porterosDisponibles = [];
+let equiposDisponibles = [];
+
+// Busca un equipo por nombre; si no existe, lo crea.
+async function getOrCreateEquipoId(nombre){
+  const buscar = await fetch(
+    SUPABASE_URL + "/rest/v1/equipos?nombre=ilike." + encodeURIComponent(nombre) + "&select=id",
+    { headers: sbHeaders() }
+  );
+  if (!buscar.ok) throw new Error("HTTP " + buscar.status);
+  const encontrados = await buscar.json();
+  if (encontrados.length > 0) return encontrados[0].id;
+
+  const crear = await fetch(SUPABASE_URL + "/rest/v1/equipos", {
     method: "POST",
     headers: sbHeaders({ "Prefer": "return=representation" }),
     body: JSON.stringify({ nombre: nombre })
@@ -454,8 +545,16 @@ async function cargarListaPorteros(){
     const res = await fetch(SUPABASE_URL + "/rest/v1/porteros?select=nombre&order=nombre.asc", { headers: sbHeaders() });
     if (!res.ok) return;
     const porteros = await res.json();
-    const datalist = document.getElementById("listaPorteros");
-    datalist.innerHTML = porteros.map(p => '<option value="' + p.nombre.replace(/"/g,"&quot;") + '">').join("");
+    porterosDisponibles = porteros.map(p => p.nombre);
+  } catch(e) { /* silencioso: el autocompletado es un extra, no crítico */ }
+}
+
+async function cargarListaEquipos(){
+  try {
+    const res = await fetch(SUPABASE_URL + "/rest/v1/equipos?select=nombre&order=nombre.asc", { headers: sbHeaders() });
+    if (!res.ok) return;
+    const equipos = await res.json();
+    equiposDisponibles = equipos.map(e => e.nombre);
   } catch(e) { /* silencioso: el autocompletado es un extra, no crítico */ }
 }
 
@@ -463,6 +562,18 @@ async function cargarListaPorteros(){
 function nombrePorteroDe(ev){
   if (!ev.porteros) return "(portero eliminado)";
   return Array.isArray(ev.porteros) ? (ev.porteros[0] ? ev.porteros[0].nombre : "") : ev.porteros.nombre;
+}
+
+// Extrae el nombre del equipo embebido en la respuesta de Supabase (select=*,equipos(nombre))
+function nombreEquipoDe(ev){
+  if (!ev.equipos) return "";
+  return Array.isArray(ev.equipos) ? (ev.equipos[0] ? ev.equipos[0].nombre : "") : ev.equipos.nombre;
+}
+
+function porteroCampo(ev, campo){
+  if (!ev.porteros) return "";
+  const p = Array.isArray(ev.porteros) ? ev.porteros[0] : ev.porteros;
+  return (p && p[campo] !== null && p[campo] !== undefined) ? p[campo] : "";
 }
 
 function renderForm(){
@@ -528,7 +639,7 @@ async function renderSavedList(){
   }
   el.innerHTML = list.map((ev) => {
     const fecha = ev.fecha_partido || (ev.created_at ? ev.created_at.slice(0,10) : "");
-    const detalle = [ev.equipo, fecha].filter(Boolean).join(" · ");
+    const detalle = [nombreEquipoDe(ev), fecha].filter(Boolean).join(" · ");
     return '<div class="saved-row"><span>' + nombrePorteroDe(ev) + (detalle ? ' <span style="color:var(--text-muted)">(' + detalle + ')</span>' : '') + '</span><button class="del" data-id="' + ev.id + '">Eliminar</button></div>';
   }).join("");
   document.querySelectorAll(".del").forEach(b => {
@@ -564,17 +675,21 @@ document.getElementById("guardar").addEventListener("click", async () => {
   nombreEl.style.borderColor = "";
 
   const equipo = document.getElementById("equipo").value.trim();
+  const lateralidad = document.querySelector('input[name="lateralidad"]:checked').value;
+  const anioNacimiento = parseInt(document.getElementById("anioNacimiento").value, 10) || null;
   const fechaInput = document.getElementById("fecha").value;
   const visionado = document.querySelector('input[name="visionado"]:checked').value;
   const partido = document.getElementById("partido").value.trim();
   const observaciones = document.getElementById("observaciones").value.trim();
+  const evalFinalEl = document.querySelector('input[name="evalFinal"]:checked');
+  const evaluacionFinal = evalFinalEl ? evalFinalEl.value : null;
 
   const row = {
-    equipo: equipo || null,
     fecha_partido: fechaInput || null,
     tipo_visionado: visionado,
     partido: partido || null,
-    observaciones: observaciones || null
+    observaciones: observaciones || null,
+    evaluacion_final: evaluacionFinal
   };
   DATA.forEach(sec => sec.items.forEach(it => {
     const v = valores[it];
@@ -589,12 +704,14 @@ document.getElementById("guardar").addEventListener("click", async () => {
   guardarBtn.disabled = true;
   setStatus("Guardando…", "var(--text-secondary)");
   try {
-    row.portero_id = await getOrCreatePorteroId(nombre);
+    row.portero_id = await getOrCreatePorteroId(nombre, lateralidad, anioNacimiento);
+    row.equipo_id = equipo ? await getOrCreateEquipoId(equipo) : null;
     await insertEvaluacion(row);
     setStatus("Evaluación guardada correctamente.", "var(--success)");
     resetForm();
     renderSavedList();
     cargarListaPorteros();
+    cargarListaEquipos();
   } catch(err){
     setStatus("No se pudo guardar. Comprueba tu conexión e inténtalo de nuevo.", "var(--danger)");
   }
@@ -603,11 +720,16 @@ document.getElementById("guardar").addEventListener("click", async () => {
 
 function resetForm(){
   document.getElementById("nombre").value = "";
+  document.getElementById("sugerencias").style.display = "none";
   document.getElementById("equipo").value = "";
+  document.getElementById("sugerenciasEquipo").style.display = "none";
+  document.querySelector('input[name="lateralidad"][value="N/D"]').checked = true;
+  document.getElementById("anioNacimiento").value = "";
   document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
   document.querySelector('input[name="visionado"][value="Directo"]').checked = true;
   document.getElementById("partido").value = "";
   document.getElementById("observaciones").value = "";
+  document.querySelectorAll('input[name="evalFinal"]').forEach(r => { r.checked = false; });
   DATA.forEach(s => s.items.forEach(it => { valores[it] = { nd: true, val: 2.5 }; }));
   renderForm();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -627,18 +749,21 @@ document.getElementById("exportar").addEventListener("click", async () => {
   const allItems = [];
   DATA.forEach(sec => sec.items.forEach(it => allItems.push(it)));
 
-  const headers = ["Nombre", "Equipo", "Fecha", "Tipo de visionado", "Partido", "Observaciones"]
+  const headers = ["Nombre", "Lateralidad", "Año nacimiento", "Equipo", "Fecha", "Tipo de visionado", "Partido", "Observaciones", "Evaluación final"]
     .concat(DATA.map(sec => "Media " + sec.cat))
     .concat(allItems);
   const rows = [headers];
   list.forEach(ev => {
     const row = [
       nombrePorteroDe(ev),
-      ev.equipo || "",
+      porteroCampo(ev, "lateralidad") || "N/D",
+      porteroCampo(ev, "anio_nacimiento"),
+      nombreEquipoDe(ev),
       ev.fecha_partido || (ev.created_at ? ev.created_at.slice(0,10) : ""),
       ev.tipo_visionado || "",
       ev.partido || "",
-      ev.observaciones || ""
+      ev.observaciones || "",
+      ev.evaluacion_final || ""
     ];
     DATA.forEach(sec => {
       const v = ev[sec.col];
@@ -674,6 +799,48 @@ document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
 renderForm();
 renderSavedList();
 cargarListaPorteros();
+cargarListaEquipos();
+
+function activarAutocompletado(inputEl, contenedorEl, obtenerLista){
+  function mostrar(){
+    const filtro = inputEl.value.trim().toLowerCase();
+    if (!filtro){
+      contenedorEl.style.display = "none";
+      contenedorEl.innerHTML = "";
+      return;
+    }
+    const coincidencias = obtenerLista().filter(n => n.toLowerCase().includes(filtro));
+    if (coincidencias.length === 0){
+      contenedorEl.style.display = "none";
+      contenedorEl.innerHTML = "";
+      return;
+    }
+    contenedorEl.innerHTML = coincidencias.map(n =>
+      '<div class="suggestion-item">' + n.replace(/</g,"&lt;") + '</div>'
+    ).join("");
+    contenedorEl.style.display = "block";
+  }
+
+  inputEl.addEventListener("input", mostrar);
+  inputEl.addEventListener("focus", mostrar);
+
+  contenedorEl.addEventListener("click", e => {
+    const item = e.target.closest(".suggestion-item");
+    if (!item) return;
+    inputEl.value = item.textContent;
+    contenedorEl.style.display = "none";
+    contenedorEl.innerHTML = "";
+  });
+
+  document.addEventListener("click", e => {
+    if (e.target !== inputEl && !contenedorEl.contains(e.target)){
+      contenedorEl.style.display = "none";
+    }
+  });
+}
+
+activarAutocompletado(document.getElementById("nombre"), document.getElementById("sugerencias"), () => porterosDisponibles);
+activarAutocompletado(document.getElementById("equipo"), document.getElementById("sugerenciasEquipo"), () => equiposDisponibles);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
