@@ -358,7 +358,7 @@
 <div id="restoFormulario" style="display:none;">
 
 <div class="field-group" style="position:relative;">
-  <label for="evaluador">Evaluador <span style="color:var(--danger)">*</span></label>
+  <label for="evaluador">Técnico <span style="color:var(--danger)">*</span></label>
   <input type="text" id="evaluador" placeholder="Tu nombre" autocomplete="off">
   <div id="sugerenciasEvaluador" class="suggestions"></div>
 </div>
@@ -446,7 +446,7 @@
 <div class="saved-section">
   <h2>Evaluaciones guardadas</h2>
   <div class="field-group" style="margin-bottom:10px;">
-    <input type="text" id="buscarGuardadas" placeholder="Buscar por portero o equipo…">
+    <input type="text" id="buscarGuardadas" placeholder="Buscar por portero, equipo o técnico…">
   </div>
   <div class="card" id="savedList"></div>
 </div>
@@ -828,7 +828,8 @@ function pintarListaGuardadas(filtro){
   const filtradas = texto
     ? evaluacionesCargadas.filter(ev =>
         nombrePorteroDe(ev).toLowerCase().includes(texto) ||
-        nombreEquipoDe(ev).toLowerCase().includes(texto)
+        nombreEquipoDe(ev).toLowerCase().includes(texto) ||
+        nombreTecnicoDe(ev).toLowerCase().includes(texto)
       )
     : evaluacionesCargadas;
 
@@ -860,7 +861,7 @@ document.getElementById("guardar").addEventListener("click", () => {
   const evaluadorEl = document.getElementById("evaluador");
   const evaluador = evaluadorEl.value.trim();
   if (!evaluador){
-    setStatus("El evaluador es obligatorio.", "var(--danger)");
+    setStatus("El técnico es obligatorio.", "var(--danger)");
     evaluadorEl.style.borderColor = "var(--danger)";
     evaluadorEl.focus();
     return;
@@ -944,7 +945,7 @@ function mostrarRepaso(){
   const itemsPuntuados = p.respuestas.length;
 
   const filas = [
-    ["Evaluador", p.evaluador],
+    ["Técnico", p.evaluador],
     ["Portero", p.nombre],
     ["Año de nacimiento", p.anioNacimiento],
     ["Lateralidad", p.lateralidad],
@@ -1064,7 +1065,7 @@ document.getElementById("exportar").addEventListener("click", async () => {
   }
 
   const nombresItems = columnasItems.map(c => c.nombre);
-  const headers = ["Evaluador", "Nombre", "Lateralidad", "Año nacimiento", "Equipo", "Modalidad", "Fecha", "Tipo de visionado", "Partido", "Observaciones", "Evaluación final"]
+  const headers = ["Técnico", "Nombre", "Lateralidad", "Año nacimiento", "Equipo", "Modalidad", "Fecha", "Tipo de visionado", "Partido", "Observaciones", "Evaluación final"]
     .concat(CATEGORY_ORDER.map(cat => "Media " + cat))
     .concat(nombresItems);
   const rows = [headers];
