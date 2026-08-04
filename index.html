@@ -292,7 +292,10 @@
     padding: 10px 14px;
     border-top: 1px solid var(--border);
     font-size: 14px;
+    cursor: pointer;
   }
+  .saved-row:active { background: var(--accent-bg); }
+  .saved-row-arrow { color: var(--text-muted); flex: none; margin-left: 8px; }
   .saved-row:first-child { border-top: none; }
   .modal-overlay {
     position: fixed;
@@ -328,6 +331,13 @@
   .resumen-item:first-child { border-top: none; }
   .resumen-item .etiqueta { color: var(--text-secondary); }
   .resumen-item .valor { font-weight: 500; text-align: right; }
+  .detalle-cat-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 18px 0 2px;
+    color: var(--accent);
+  }
+  .detalle-cat-title:first-of-type { margin-top: 18px; }
   .resumen-aviso {
     font-size: 13px;
     color: var(--text-secondary);
@@ -440,6 +450,16 @@
       <button class="btn-secondary" id="volverEditar">Volver a editar</button>
       <button class="btn-primary" id="confirmarGuardar">Confirmar y guardar</button>
     </div>
+  </div>
+</div>
+
+<div id="modalDetalle" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <h2 style="margin-top:0;" id="detalleTitulo">Detalle de evaluación</h2>
+      <button class="btn-secondary" id="cerrarDetalle" style="flex:none;padding:6px 14px;">Cerrar</button>
+    </div>
+    <div id="detalleContenido"></div>
   </div>
 </div>
 
@@ -815,7 +835,7 @@ function filaGuardada(ev){
   const fecha = ev.fecha_partido || (ev.created_at ? ev.created_at.slice(0,10) : "");
   const modalidadNombre = ev.modalidades ? (Array.isArray(ev.modalidades) ? (ev.modalidades[0] ? ev.modalidades[0].nombre : "") : ev.modalidades.nombre) : "";
   const detalle = [modalidadNombre, nombreEquipoDe(ev), fecha, nombreTecnicoDe(ev) ? ("téc. " + nombreTecnicoDe(ev)) : ""].filter(Boolean).join(" · ");
-  return '<div class="saved-row"><span>' + nombrePorteroDe(ev) + (detalle ? ' <span style="color:var(--text-muted)">(' + detalle + ')</span>' : '') + '</span></div>';
+  return '<div class="saved-row" data-id="' + ev.id + '"><span>' + nombrePorteroDe(ev) + (detalle ? ' <span style="color:var(--text-muted)">(' + detalle + ')</span>' : '') + '</span><span class="saved-row-arrow">›</span></div>';
 }
 
 function pintarListaGuardadas(filtro){
@@ -825,13 +845,15 @@ function pintarListaGuardadas(filtro){
     return;
   }
   const texto = (filtro || "").trim().toLowerCase();
-  const filtradas = texto
-    ? evaluacionesCargadas.filter(ev =>
-        nombrePorteroDe(ev).toLowerCase().includes(texto) ||
-        nombreEquipoDe(ev).toLowerCase().includes(texto) ||
-        nombreTecnicoDe(ev).toLowerCase().includes(texto)
-      )
-    : evaluacionesCargadas;
+  if (!texto){
+    el.innerHTML = '<div class="empty">Escribe un nombre de portero, equipo o técnico para buscar.</div>';
+    return;
+  }
+  const filtradas = evaluacionesCargadas.filter(ev =>
+    nombrePorteroDe(ev).toLowerCase().includes(texto) ||
+    nombreEquipoDe(ev).toLowerCase().includes(texto) ||
+    nombreTecnicoDe(ev).toLowerCase().includes(texto)
+  );
 
   if (filtradas.length === 0){
     el.innerHTML = '<div class="empty">Sin resultados para "' + filtro + '".</div>';
@@ -842,6 +864,87 @@ function pintarListaGuardadas(filtro){
 
 document.getElementById("buscarGuardadas").addEventListener("input", e => {
   pintarListaGuardadas(e.target.value);
+});
+
+// Trae las puntuaciones ítem a ítem de una evaluación concreta
+async function cargarRespuestasEvaluacion(id){
+  const res = await fetch(
+    SUPABASE_URL + "/rest/v1/respuestas_evaluacion?select=valor,items_evaluacion(nombre,categoria,orden)&evaluacion_id=eq." + encodeURIComponent(id),
+    { headers: sbHeaders() }
+  );
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return await res.json();
+}
+
+async function abrirDetalleEvaluacion(ev){
+  const modal = document.getElementById("modalDetalle");
+  const cont = document.getElementById("detalleContenido");
+  document.getElementById("detalleTitulo").textContent = nombrePorteroDe(ev);
+
+  const modalidadNombre = ev.modalidades ? (Array.isArray(ev.modalidades) ? (ev.modalidades[0] ? ev.modalidades[0].nombre : "") : ev.modalidades.nombre) : "";
+  const fecha = ev.fecha_partido || (ev.created_at ? ev.created_at.slice(0,10) : "");
+
+  const cabecera = [
+    ["Técnico", nombreTecnicoDe(ev) || "—"],
+    ["Equipo", nombreEquipoDe(ev) || "—"],
+    ["Modalidad", modalidadNombre || "—"],
+    ["Fecha", fecha || "—"],
+    ["Tipo de visionado", ev.tipo_visionado || "—"],
+    ["Partido", ev.partido || "—"],
+    ["Evaluación final", ev.evaluacion_final || "N/D"]
+  ];
+  if (ev.observaciones) cabecera.push(["Observaciones", ev.observaciones]);
+
+  const cabeceraHtml = cabecera.map(([etq, val]) =>
+    '<div class="resumen-item"><span class="etiqueta">' + etq + '</span><span class="valor">' + val + '</span></div>'
+  ).join("");
+
+  cont.innerHTML = cabeceraHtml + '<div class="empty" style="padding-top:14px;">Cargando ítems…</div>';
+  modal.style.display = "flex";
+
+  try {
+    const respuestas = await cargarRespuestasEvaluacion(ev.id);
+    const porCategoria = {};
+    respuestas.forEach(r => {
+      const item = Array.isArray(r.items_evaluacion) ? r.items_evaluacion[0] : r.items_evaluacion;
+      if (!item) return;
+      if (!porCategoria[item.categoria]) porCategoria[item.categoria] = [];
+      porCategoria[item.categoria].push({ nombre: item.nombre, orden: item.orden, valor: r.valor });
+    });
+
+    let itemsHtml = "";
+    CATEGORY_ORDER.forEach(cat => {
+      const media = ev[CATEGORY_COL[cat]];
+      itemsHtml += '<div class="detalle-cat-title">' + cat + ' · Media: ' + (media === null || media === undefined ? 'N/D' : fmt(media)) + '</div>';
+      const items = (porCategoria[cat] || []).sort((a,b) => a.orden - b.orden);
+      if (items.length === 0){
+        itemsHtml += '<div class="empty" style="padding:6px 0;">Sin ítems registrados.</div>';
+      } else {
+        itemsHtml += items.map(it =>
+          '<div class="resumen-item"><span class="etiqueta">' + it.nombre + '</span><span class="valor">' + (it.valor === null || it.valor === undefined ? 'N/D' : fmt(it.valor)) + '</span></div>'
+        ).join("");
+      }
+    });
+
+    cont.innerHTML = cabeceraHtml + itemsHtml;
+  } catch(e){
+    cont.innerHTML = cabeceraHtml + '<div class="empty" style="color:var(--danger);padding-top:14px;">No se pudo cargar el detalle de los ítems. Comprueba tu conexión.</div>';
+  }
+}
+
+document.getElementById("savedList").addEventListener("click", e => {
+  const row = e.target.closest(".saved-row");
+  if (!row) return;
+  const ev = evaluacionesCargadas.find(x => String(x.id) === String(row.dataset.id));
+  if (ev) abrirDetalleEvaluacion(ev);
+});
+
+document.getElementById("cerrarDetalle").addEventListener("click", () => {
+  document.getElementById("modalDetalle").style.display = "none";
+});
+
+document.getElementById("modalDetalle").addEventListener("click", e => {
+  if (e.target.id === "modalDetalle") document.getElementById("modalDetalle").style.display = "none";
 });
 
 function setStatus(msg, color){
