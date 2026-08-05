@@ -1250,9 +1250,9 @@ function recopilarEstadoFormulario(){
 }
 
 function estadoFormularioVacio(estado){
-  const sinTexto = !estado.evaluador.trim() && !estado.nombre.trim() && !estado.equipo.trim() &&
-    !estado.partido.trim() && !estado.observaciones.trim();
-  const sinPuntuaciones = Object.values(estado.valores).every(v => v.nd);
+  const sinTexto = !(estado.evaluador || "").trim() && !(estado.nombre || "").trim() && !(estado.equipo || "").trim() &&
+    !(estado.partido || "").trim() && !(estado.observaciones || "").trim();
+  const sinPuntuaciones = !estado.valores || Object.values(estado.valores).every(v => v.nd);
   return sinTexto && sinPuntuaciones;
 }
 
@@ -1304,9 +1304,23 @@ function intentarRestaurarBorrador(){
   } catch(e){ borrador = null; }
   if (!borrador) return;
 
+  // Comprobación defensiva: si por lo que sea el borrador guardado está realmente
+  // vacío (sin texto ni puntuaciones), lo descartamos en silencio en vez de avisar.
+  if (estadoFormularioVacio(borrador)){
+    borrarBorrador();
+    return;
+  }
+
   const banner = document.getElementById("borradorBanner");
+  let cuando = "";
+  if (borrador.guardadoEn){
+    try {
+      const fecha = new Date(borrador.guardadoEn);
+      cuando = " (guardada el " + fecha.toLocaleDateString() + " a las " + fecha.toLocaleTimeString().slice(0,5) + ")";
+    } catch(e){}
+  }
   document.getElementById("borradorTexto").textContent =
-    "Tienes una evaluación sin guardar" + (borrador.nombre ? (" de " + borrador.nombre) : "") + ". ¿Continuarla?";
+    "Tienes una evaluación sin guardar" + (borrador.nombre ? (" de " + borrador.nombre) : "") + cuando + ". ¿Continuarla?";
   banner.style.display = "flex";
 
   document.getElementById("continuarBorrador").onclick = () => {
