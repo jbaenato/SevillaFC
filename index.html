@@ -465,8 +465,8 @@
   <textarea id="observaciones" placeholder="Comentarios adicionales sobre el portero"></textarea>
 </div>
 
-<div class="field-group">
-  <label>Evaluación final</label>
+<div class="field-group" id="evalFinalGroup">
+  <label>Evaluación final <span style="color:var(--danger)">*</span></label>
   <div class="radio-group">
     <label class="radio-option"><input type="radio" name="evalFinal" value="A"> A</label>
     <label class="radio-option"><input type="radio" name="evalFinal" value="B"> B</label>
@@ -907,6 +907,10 @@ function pintarListaGuardadas(filtro){
   el.innerHTML = filtradas.map(filaGuardada).join("");
 }
 
+document.getElementById("evalFinalGroup").addEventListener("change", () => {
+  document.getElementById("evalFinalGroup").style.outline = "";
+});
+
 document.getElementById("buscarGuardadas").addEventListener("input", e => {
   pintarListaGuardadas(e.target.value);
 });
@@ -1061,7 +1065,16 @@ document.getElementById("guardar").addEventListener("click", () => {
 
   const observaciones = document.getElementById("observaciones").value.trim();
   const evalFinalEl = document.querySelector('input[name="evalFinal"]:checked');
-  const evaluacionFinal = evalFinalEl ? evalFinalEl.value : null;
+  const evalFinalGroup = document.getElementById("evalFinalGroup");
+  if (!evalFinalEl){
+    setStatus("La evaluación final es obligatoria.", "var(--danger)");
+    evalFinalGroup.style.outline = "2px solid var(--danger)";
+    evalFinalGroup.style.borderRadius = "10px";
+    evalFinalGroup.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  evalFinalGroup.style.outline = "";
+  const evaluacionFinal = evalFinalEl.value;
 
   const row = {
     fecha_partido: fechaInput || null,
