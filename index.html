@@ -1122,19 +1122,30 @@ function mostrarRepaso(){
     ["Partido", p.row.partido],
     ["Evaluación final", p.row.evaluacion_final || "N/D"]
   ];
-  DATA.forEach(sec => {
-    const v = p.row[sec.col];
-    filas.push(["Media " + sec.cat, v === null ? "N/D" : fmt(v)]);
-  });
   filas.push(["Ítems puntuados", itemsPuntuados + " de " + totalItems]);
   if (p.row.observaciones) filas.push(["Observaciones", p.row.observaciones]);
+
+  const cabeceraHtml = filas.map(([etq, val]) =>
+    '<div class="resumen-item"><span class="etiqueta">' + etq + '</span><span class="valor">' + val + '</span></div>'
+  ).join("");
+
+  // Desglose ítem a ítem agrupado por categoría, con la media de cada una
+  let itemsHtml = "";
+  DATA.forEach(sec => {
+    const media = p.row[sec.col];
+    itemsHtml += '<div class="detalle-cat-title">' + sec.cat + ' · Media: ' + (media === null ? 'N/D' : fmt(media)) + '</div>';
+    itemsHtml += sec.items.map(it => {
+      const v = valores[it.id];
+      const valorTexto = v.nd ? 'N/D' : fmt(v.val);
+      return '<div class="resumen-item"><span class="etiqueta">' + it.nombre + '</span><span class="valor">' + valorTexto + '</span></div>';
+    }).join("");
+  });
 
   const avisos = calcularAvisosCalidad(p);
   const avisosHtml = avisos.map(a => '<div class="resumen-aviso resumen-aviso-danger">⚠️ ' + a + '</div>').join("");
 
-  document.getElementById("resumenRepaso").innerHTML = filas.map(([etq, val]) =>
-    '<div class="resumen-item"><span class="etiqueta">' + etq + '</span><span class="valor">' + val + '</span></div>'
-  ).join("") + avisosHtml + '<div class="resumen-aviso">Comprueba que todo esté correcto: una vez guardada, la evaluación no se puede eliminar ni editar desde la app.</div>';
+  document.getElementById("resumenRepaso").innerHTML = cabeceraHtml + itemsHtml + avisosHtml +
+    '<div class="resumen-aviso">Comprueba que todo esté correcto: una vez guardada, la evaluación no se puede eliminar ni editar desde la app.</div>';
 
   document.getElementById("modalRepaso").style.display = "flex";
 }
