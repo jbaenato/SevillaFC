@@ -352,11 +352,52 @@
     padding: 14px;
     text-align: center;
   }
+  .resumen-aviso-danger {
+    background: #fbeaea;
+    color: var(--danger);
+  }
+  .banner {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    margin-bottom: 14px;
+  }
+  .banner-borrador { background: var(--accent-bg); color: var(--accent); }
+  .banner-pendientes { background: #fdf3e0; color: #8a5a00; }
+  .banner span.banner-texto { flex: 1; }
+  .banner-acciones { display: flex; gap: 8px; flex: none; }
+  .banner-acciones button {
+    border: none;
+    background: rgba(0,0,0,0.08);
+    color: inherit;
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 8px;
+  }
 </style>
 </head>
 <body>
 
 <h1>Evaluación de porteros</h1>
+
+<div id="borradorBanner" class="banner banner-borrador">
+  <span class="banner-texto" id="borradorTexto"></span>
+  <div class="banner-acciones">
+    <button id="continuarBorrador">Continuar</button>
+    <button id="descartarBorrador">Descartar</button>
+  </div>
+</div>
+
+<div id="pendientesBanner" class="banner banner-pendientes">
+  <span class="banner-texto" id="pendientesTexto"></span>
+  <div class="banner-acciones">
+    <button id="reintentarSync">Reintentar</button>
+  </div>
+</div>
 
 <div class="field-group">
   <label>Modalidad <span style="color:var(--danger)">*</span></label>
@@ -476,6 +517,8 @@
 const SUPABASE_URL = "https://ramnvcuwyfhepspzzzpn.supabase.co";
 const SUPABASE_KEY = "sb_publishable_6B6PMd8eB85OKIS1e74Qgg_YPmTaAdj";
 const TABLE = "evaluaciones";
+const BORRADOR_KEY = "porteros_borrador_v1";
+const PENDIENTES_KEY = "porteros_pendientes_sync_v1";
 
 // Orden fijo de categorías y su columna de media correspondiente (igual para cualquier modalidad)
 const CATEGORY_ORDER = ["Ofensivo / técnico", "Defensivo / táctico", "Físico / condicional", "Psicológico"];
@@ -804,6 +847,7 @@ function renderForm(){
     s.addEventListener("input", e => {
       valores[e.target.dataset.item].val = parseFloat(e.target.value);
       renderForm();
+      guardarBorrador();
     });
   });
 
@@ -812,6 +856,7 @@ function renderForm(){
       const id = e.target.dataset.nd;
       valores[id].nd = !valores[id].nd;
       renderForm();
+      guardarBorrador();
     });
   });
 }
@@ -1042,6 +1087,24 @@ document.getElementById("guardar").addEventListener("click", () => {
   mostrarRepaso();
 });
 
+function calcularAvisosCalidad(p){
+  const avisos = [];
+  const totalItems = DATA.reduce((n, sec) => n + sec.items.length, 0);
+  const totalPuntuados = p.respuestas.length;
+
+  const seccionesVacias = DATA.filter(sec => sec.items.every(it => valores[it.id].nd));
+  const seccionesConDatos = DATA.filter(sec => sec.items.some(it => !valores[it.id].nd));
+  if (seccionesVacias.length > 0 && seccionesConDatos.length > 0){
+    avisos.push("No has puntuado ningún ítem en: " + seccionesVacias.map(s => s.cat).join(", ") + ". ¿Ha sido intencionado?");
+  }
+
+  if (totalItems > 0 && totalPuntuados / totalItems < 0.5){
+    avisos.push("Solo has puntuado " + totalPuntuados + " de " + totalItems + " ítems en total. Revisa que no se te haya olvidado nada.");
+  }
+
+  return avisos;
+}
+
 function mostrarRepaso(){
   const p = pendienteGuardar;
   const totalItems = DATA.reduce((n, sec) => n + sec.items.length, 0);
@@ -1066,9 +1129,12 @@ function mostrarRepaso(){
   filas.push(["Ítems puntuados", itemsPuntuados + " de " + totalItems]);
   if (p.row.observaciones) filas.push(["Observaciones", p.row.observaciones]);
 
+  const avisos = calcularAvisosCalidad(p);
+  const avisosHtml = avisos.map(a => '<div class="resumen-aviso resumen-aviso-danger">⚠️ ' + a + '</div>').join("");
+
   document.getElementById("resumenRepaso").innerHTML = filas.map(([etq, val]) =>
     '<div class="resumen-item"><span class="etiqueta">' + etq + '</span><span class="valor">' + val + '</span></div>'
-  ).join("") + '<div class="resumen-aviso">Comprueba que todo esté correcto: una vez guardada, la evaluación no se puede eliminar ni editar desde la app.</div>';
+  ).join("") + avisosHtml + '<div class="resumen-aviso">Comprueba que todo esté correcto: una vez guardada, la evaluación no se puede eliminar ni editar desde la app.</div>';
 
   document.getElementById("modalRepaso").style.display = "flex";
 }
@@ -1077,6 +1143,18 @@ document.getElementById("volverEditar").addEventListener("click", () => {
   document.getElementById("modalRepaso").style.display = "none";
 });
 
+// Realiza el guardado real contra Supabase: resuelve los IDs de técnico/portero/equipo
+// y crea la evaluación + sus respuestas. Se usa tanto al guardar en el momento como al
+// sincronizar evaluaciones que quedaron pendientes por falta de conexión.
+async function guardarEnSupabase(p){
+  const row = Object.assign({}, p.row);
+  row.evaluador_id = await getOrCreateTecnicoId(p.evaluador);
+  row.portero_id = await getOrCreatePorteroId(p.nombre, p.lateralidad, p.anioNacimiento);
+  row.equipo_id = await getOrCreateEquipoId(p.equipo);
+  const evaluacionId = await insertEvaluacion(row);
+  await insertRespuestas(p.respuestas.map(r => ({ evaluacion_id: evaluacionId, item_id: r.item_id, valor: r.valor })));
+}
+
 document.getElementById("confirmarGuardar").addEventListener("click", async () => {
   if (!pendienteGuardar) return;
   const p = pendienteGuardar;
@@ -1084,11 +1162,7 @@ document.getElementById("confirmarGuardar").addEventListener("click", async () =
   confirmarBtn.disabled = true;
   confirmarBtn.textContent = "Guardando…";
   try {
-    p.row.evaluador_id = await getOrCreateTecnicoId(p.evaluador);
-    p.row.portero_id = await getOrCreatePorteroId(p.nombre, p.lateralidad, p.anioNacimiento);
-    p.row.equipo_id = await getOrCreateEquipoId(p.equipo);
-    const evaluacionId = await insertEvaluacion(p.row);
-    await insertRespuestas(p.respuestas.map(r => ({ evaluacion_id: evaluacionId, item_id: r.item_id, valor: r.valor })));
+    await guardarEnSupabase(p);
     document.getElementById("modalRepaso").style.display = "none";
     setStatus("Evaluación guardada correctamente.", "var(--success)");
     resetForm();
@@ -1098,8 +1172,13 @@ document.getElementById("confirmarGuardar").addEventListener("click", async () =
     cargarListaTecnicos();
     pendienteGuardar = null;
   } catch(err){
-    setStatus("No se pudo guardar. Comprueba tu conexión e inténtalo de nuevo.", "var(--danger)");
+    // No se pudo llegar al servidor (sin conexión, red inestable...): guardamos la evaluación
+    // en el dispositivo y la subiremos automáticamente en cuanto se recupere la conexión.
+    guardarPendienteOffline(p);
     document.getElementById("modalRepaso").style.display = "none";
+    setStatus("Sin conexión: la evaluación se ha guardado en el dispositivo y se subirá sola en cuanto haya red.", "var(--accent)");
+    resetForm();
+    pendienteGuardar = null;
   }
   confirmarBtn.disabled = false;
   confirmarBtn.textContent = "Confirmar y guardar";
@@ -1119,8 +1198,183 @@ function resetForm(){
   document.querySelectorAll('input[name="evalFinal"]').forEach(r => { r.checked = false; });
   DATA.forEach(s => s.items.forEach(it => { valores[it.id] = { nd: true, val: 2.5 }; }));
   renderForm();
+  borrarBorrador();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
+
+// ---------- Borrador local (recuperación ante cierre accidental) ----------
+
+function recopilarEstadoFormulario(){
+  if (!modalidadSeleccionada || document.getElementById("restoFormulario").style.display === "none") return null;
+  const evalFinalEl = document.querySelector('input[name="evalFinal"]:checked');
+  return {
+    modalidadId: modalidadSeleccionada.id,
+    modalidadNombre: modalidadSeleccionada.nombre,
+    evaluador: document.getElementById("evaluador").value,
+    nombre: document.getElementById("nombre").value,
+    equipo: document.getElementById("equipo").value,
+    lateralidad: document.querySelector('input[name="lateralidad"]:checked').value,
+    anioNacimiento: document.getElementById("anioNacimiento").value,
+    fecha: document.getElementById("fecha").value,
+    visionado: document.querySelector('input[name="visionado"]:checked').value,
+    partido: document.getElementById("partido").value,
+    observaciones: document.getElementById("observaciones").value,
+    evalFinal: evalFinalEl ? evalFinalEl.value : "",
+    valores: valores,
+    guardadoEn: new Date().toISOString()
+  };
+}
+
+function estadoFormularioVacio(estado){
+  const sinTexto = !estado.evaluador.trim() && !estado.nombre.trim() && !estado.equipo.trim() &&
+    !estado.partido.trim() && !estado.observaciones.trim();
+  const sinPuntuaciones = Object.values(estado.valores).every(v => v.nd);
+  return sinTexto && sinPuntuaciones;
+}
+
+function guardarBorrador(){
+  try {
+    const estado = recopilarEstadoFormulario();
+    if (!estado || estadoFormularioVacio(estado)){
+      localStorage.removeItem(BORRADOR_KEY);
+      return;
+    }
+    localStorage.setItem(BORRADOR_KEY, JSON.stringify(estado));
+  } catch(e){ /* localStorage no disponible: sin borrador, sin bloquear la app */ }
+}
+
+function borrarBorrador(){
+  try { localStorage.removeItem(BORRADOR_KEY); } catch(e){}
+}
+
+function aplicarCamposBorrador(borrador){
+  document.getElementById("evaluador").value = borrador.evaluador || "";
+  document.getElementById("nombre").value = borrador.nombre || "";
+  document.getElementById("equipo").value = borrador.equipo || "";
+  const lat = document.querySelector('input[name="lateralidad"][value="' + borrador.lateralidad + '"]');
+  if (lat) lat.checked = true;
+  document.getElementById("anioNacimiento").value = borrador.anioNacimiento || "";
+  document.getElementById("fecha").value = borrador.fecha || "";
+  const vis = document.querySelector('input[name="visionado"][value="' + borrador.visionado + '"]');
+  if (vis) vis.checked = true;
+  document.getElementById("partido").value = borrador.partido || "";
+  document.getElementById("observaciones").value = borrador.observaciones || "";
+  if (borrador.evalFinal){
+    const ev = document.querySelector('input[name="evalFinal"][value="' + borrador.evalFinal + '"]');
+    if (ev) ev.checked = true;
+  }
+  if (borrador.valores){
+    Object.keys(borrador.valores).forEach(id => {
+      if (valores.hasOwnProperty(id)) valores[id] = borrador.valores[id];
+    });
+  }
+  renderForm();
+  setStatus("Borrador recuperado.", "var(--success)");
+}
+
+function intentarRestaurarBorrador(){
+  let borrador = null;
+  try {
+    const guardado = localStorage.getItem(BORRADOR_KEY);
+    if (guardado) borrador = JSON.parse(guardado);
+  } catch(e){ borrador = null; }
+  if (!borrador) return;
+
+  const banner = document.getElementById("borradorBanner");
+  document.getElementById("borradorTexto").textContent =
+    "Tienes una evaluación sin guardar" + (borrador.nombre ? (" de " + borrador.nombre) : "") + ". ¿Continuarla?";
+  banner.style.display = "flex";
+
+  document.getElementById("continuarBorrador").onclick = () => {
+    banner.style.display = "none";
+    const radio = document.querySelector('input[name="modalidad"][value="' + borrador.modalidadId + '"]');
+    if (!radio){
+      setStatus("No se pudo recuperar la modalidad del borrador. Comprueba tu conexión.", "var(--danger)");
+      return;
+    }
+    radio.checked = true;
+    seleccionarModalidad(borrador.modalidadId, borrador.modalidadNombre).then(() => {
+      aplicarCamposBorrador(borrador);
+    });
+  };
+  document.getElementById("descartarBorrador").onclick = () => {
+    borrarBorrador();
+    banner.style.display = "none";
+  };
+}
+
+// ---------- Cola de evaluaciones pendientes de subir (modo sin conexión) ----------
+
+function obtenerColaPendientes(){
+  try {
+    const guardado = localStorage.getItem(PENDIENTES_KEY);
+    return guardado ? JSON.parse(guardado) : [];
+  } catch(e){ return []; }
+}
+
+function guardarColaPendientes(cola){
+  try { localStorage.setItem(PENDIENTES_KEY, JSON.stringify(cola)); } catch(e){}
+}
+
+function guardarPendienteOffline(p){
+  const cola = obtenerColaPendientes();
+  cola.push(Object.assign({}, p, { guardadoEn: new Date().toISOString() }));
+  guardarColaPendientes(cola);
+  actualizarIndicadorPendientes();
+}
+
+function actualizarIndicadorPendientes(sincronizandoAhora){
+  const banner = document.getElementById("pendientesBanner");
+  const texto = document.getElementById("pendientesTexto");
+  const n = obtenerColaPendientes().length;
+  if (n === 0){
+    banner.style.display = "none";
+    return;
+  }
+  banner.style.display = "flex";
+  const plural = n === 1 ? "" : "es";
+  texto.textContent = sincronizandoAhora
+    ? "Subiendo " + n + " evaluación" + plural + " pendiente" + (n === 1 ? "" : "s") + "…"
+    : n + " evaluación" + plural + " pendiente" + (n === 1 ? "" : "s") + " de subir. Se subirán solas al recuperar conexión.";
+}
+
+let sincronizandoPendientes = false;
+
+async function sincronizarPendientes(){
+  if (sincronizandoPendientes) return;
+  let cola = obtenerColaPendientes();
+  if (cola.length === 0) return;
+
+  sincronizandoPendientes = true;
+  actualizarIndicadorPendientes(true);
+  let algunaSubida = false;
+
+  while (cola.length > 0){
+    try {
+      await guardarEnSupabase(cola[0]);
+      cola.shift();
+      guardarColaPendientes(cola);
+      algunaSubida = true;
+      actualizarIndicadorPendientes(true);
+    } catch(e){
+      break; // seguimos sin conexión (o falló ese intento); lo reintentamos más tarde
+    }
+  }
+
+  sincronizandoPendientes = false;
+  actualizarIndicadorPendientes();
+
+  if (algunaSubida){
+    renderSavedList();
+    cargarListaPorteros();
+    cargarListaEquipos();
+    cargarListaTecnicos();
+  }
+}
+
+window.addEventListener("online", sincronizarPendientes);
+document.getElementById("reintentarSync").addEventListener("click", sincronizarPendientes);
+setInterval(sincronizarPendientes, 30000);
 
 document.getElementById("exportar").addEventListener("click", async () => {
   setStatus("Preparando exportación…", "var(--text-secondary)");
@@ -1219,11 +1473,19 @@ document.getElementById("exportar").addEventListener("click", async () => {
 
 document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
 
-cargarModalidades();
+cargarModalidades().then(intentarRestaurarBorrador);
 renderSavedList();
 cargarListaPorteros();
 cargarListaEquipos();
 cargarListaTecnicos();
+actualizarIndicadorPendientes();
+sincronizarPendientes();
+
+// Autoguardado del borrador: cualquier cambio en los campos del formulario (texto o radios),
+// más un intervalo de seguridad por si algún cambio no dispara los eventos anteriores.
+document.getElementById("restoFormulario").addEventListener("input", guardarBorrador);
+document.getElementById("restoFormulario").addEventListener("change", guardarBorrador);
+setInterval(guardarBorrador, 8000);
 
 function activarAutocompletado(inputEl, contenedorEl, obtenerLista){
   function mostrar(){
