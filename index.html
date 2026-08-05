@@ -1148,7 +1148,7 @@ document.getElementById("volverEditar").addEventListener("click", () => {
 // sincronizar evaluaciones que quedaron pendientes por falta de conexión.
 async function guardarEnSupabase(p){
   const row = Object.assign({}, p.row);
-  row.evaluador_id = await getOrCreateTecnicoId(p.evaluador);
+  row.tecnico_id = await getOrCreateTecnicoId(p.evaluador);
   row.portero_id = await getOrCreatePorteroId(p.nombre, p.lateralidad, p.anioNacimiento);
   row.equipo_id = await getOrCreateEquipoId(p.equipo);
   const evaluacionId = await insertEvaluacion(row);
