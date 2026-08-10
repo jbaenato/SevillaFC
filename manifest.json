@@ -1,6 +1,6 @@
 {
-  "name": "Evaluación de porteros",
-  "short_name": "Porteros",
+  "name": "Captación",
+  "short_name": "Captación",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
