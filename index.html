@@ -352,6 +352,20 @@
     color: var(--accent);
   }
   .detalle-cat-title:first-of-type { margin-top: 18px; }
+  .detalle-acciones {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .edicion-portero {
+    background: var(--accent-bg);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .edicion-portero .field-group { margin-bottom: 12px; }
+  .edicion-portero .actions { display: flex; gap: 8px; justify-content: flex-end; }
   .resumen-aviso {
     font-size: 13px;
     color: var(--text-secondary);
@@ -466,9 +480,8 @@
 <div id="restoFormulario" style="display:none;">
 
 <div class="field-group" style="position:relative;">
-  <label for="evaluador">Técnico <span style="color:var(--danger)">*</span></label>
-  <input type="text" id="evaluador" placeholder="Tu nombre" autocomplete="off">
-  <div id="sugerenciasEvaluador" class="suggestions"></div>
+  <label for="evaluador">Técnico</label>
+  <input type="text" id="evaluador" readonly disabled>
 </div>
 
 <div class="field-group" style="position:relative;">
@@ -602,6 +615,32 @@ let tecnicosDisponibles = [];
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let sesionActual = null;
 let appIniciada = false;
+let perfilActual = null; // { nombre, rol } del técnico con sesión iniciada
+
+async function cargarPerfilActual(){
+  try {
+    const res = await fetch(
+      SUPABASE_URL + "/rest/v1/perfiles?select=nombre,rol",
+      { headers: sbHeaders() }
+    );
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const filas = await res.json();
+    perfilActual = filas[0] || null;
+  } catch(e){
+    perfilActual = null;
+  }
+
+  const nombreTecnico = (perfilActual && perfilActual.nombre) ? perfilActual.nombre : (sesionActual ? sesionActual.user.email : "");
+  document.getElementById("evaluador").value = nombreTecnico;
+
+  if (!perfilActual || !perfilActual.nombre){
+    setStatus("No se ha encontrado tu perfil de técnico. Pide a un coordinador que lo configure.", "var(--danger)");
+  }
+}
+
+function esCoordinador(){
+  return !!(perfilActual && perfilActual.rol === "coordinador");
+}
 
 async function obtenerAccessToken(){
   const { data } = await sb.auth.getSession();
@@ -922,8 +961,11 @@ async function abrirDetalleEvaluacion(ev){
 
   const modalidadNombre = ev.modalidades ? (Array.isArray(ev.modalidades) ? (ev.modalidades[0] ? ev.modalidades[0].nombre : "") : ev.modalidades.nombre) : "";
   const fecha = ev.fecha_partido || (ev.created_at ? ev.created_at.slice(0,10) : "");
+  const lateralidadActual = porteroCampo(ev, "lateralidad") || "N/D";
 
   const cabecera = [
+    ["Portero", nombrePorteroDe(ev) || "—"],
+    ["Lateralidad", lateralidadActual],
     ["Técnico", nombreTecnicoDe(ev) || "—"],
     ["Equipo", nombreEquipoDe(ev) || "—"],
     ["Modalidad", modalidadNombre || "—"],
@@ -938,8 +980,17 @@ async function abrirDetalleEvaluacion(ev){
     '<div class="resumen-item"><span class="etiqueta">' + etq + '</span><span class="valor">' + val + '</span></div>'
   ).join("");
 
-  cont.innerHTML = cabeceraHtml + '<div class="empty" style="padding-top:14px;">Cargando ítems…</div>';
+  const accionesHtml =
+    '<div class="detalle-acciones">' +
+      '<button class="btn-secondary" id="btnEditarPortero" style="padding:6px 12px;font-size:12px;">Editar datos del portero</button>' +
+      (esCoordinador() ? '<button class="btn-secondary" id="btnEliminarEvaluacion" style="padding:6px 12px;font-size:12px;color:var(--danger);">Eliminar evaluación</button>' : '') +
+    '</div>';
+
+  const historialHtml = construirHistorialEquipos(ev);
+
+  cont.innerHTML = accionesHtml + '<div id="editarPorteroForm"></div>' + cabeceraHtml + historialHtml + '<div class="empty" style="padding-top:14px;">Cargando ítems…</div>';
   modal.style.display = "flex";
+  enlazarAccionesDetalle(ev);
 
   try {
     const respuestas = await cargarRespuestasEvaluacion(ev.id);
@@ -965,9 +1016,148 @@ async function abrirDetalleEvaluacion(ev){
       }
     });
 
-    cont.innerHTML = cabeceraHtml + itemsHtml;
+    cont.innerHTML = accionesHtml + '<div id="editarPorteroForm"></div>' + cabeceraHtml + historialHtml + itemsHtml;
   } catch(e){
-    cont.innerHTML = cabeceraHtml + '<div class="empty" style="color:var(--danger);padding-top:14px;">No se pudo cargar el detalle de los ítems. Comprueba tu conexión.</div>';
+    cont.innerHTML = accionesHtml + '<div id="editarPorteroForm"></div>' + cabeceraHtml + historialHtml + '<div class="empty" style="color:var(--danger);padding-top:14px;">No se pudo cargar el detalle de los ítems. Comprueba tu conexión.</div>';
+  }
+  enlazarAccionesDetalle(ev);
+}
+
+// Historial de equipos del portero: se deduce de sus propias evaluaciones a lo largo del
+// tiempo (cada evaluación ya guarda el equipo que tenía en ese momento), sin necesidad de
+// guardar un "equipo actual" aparte que perdería ese histórico al sobrescribirse.
+function construirHistorialEquipos(ev){
+  if (!ev.portero_id) return "";
+  const delMismoPortero = evaluacionesCargadas.filter(e => e.portero_id === ev.portero_id);
+  if (delMismoPortero.length === 0) return "";
+
+  const puntos = delMismoPortero.map(e => ({
+    equipo: nombreEquipoDe(e) || "—",
+    fecha: e.fecha_partido || (e.created_at ? e.created_at.slice(0,10) : "")
+  })).sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""));
+
+  // Colapsa fechas/equipos consecutivos iguales para no repetir líneas
+  const filas = [];
+  puntos.forEach(p => {
+    const anterior = filas[filas.length - 1];
+    if (!anterior || anterior.equipo !== p.equipo) filas.push({ equipo: p.equipo, desde: p.fecha, hasta: p.fecha });
+    else anterior.hasta = p.fecha;
+  });
+
+  if (filas.length <= 1) return "";
+
+  let html = '<div class="detalle-cat-title">Historial de equipos</div>';
+  html += filas.map(f => {
+    const rango = f.desde === f.hasta ? (f.desde || "—") : (f.desde || "—") + " → " + (f.hasta || "—");
+    return '<div class="resumen-item"><span class="etiqueta">' + f.equipo + '</span><span class="valor" style="font-weight:400;color:var(--text-muted);">' + rango + '</span></div>';
+  }).join("");
+  return html;
+}
+
+function enlazarAccionesDetalle(ev){
+  const btnEditar = document.getElementById("btnEditarPortero");
+  if (btnEditar) btnEditar.onclick = () => mostrarFormularioEdicionPortero(ev);
+
+  const btnEliminar = document.getElementById("btnEliminarEvaluacion");
+  if (btnEliminar) btnEliminar.onclick = () => confirmarEliminarEvaluacion(ev);
+}
+
+function mostrarFormularioEdicionPortero(ev){
+  const cont = document.getElementById("editarPorteroForm");
+  const nombreActual = nombrePorteroDe(ev);
+  const lateralidadActual = porteroCampo(ev, "lateralidad") || "N/D";
+
+  cont.innerHTML =
+    '<div class="edicion-portero">' +
+      '<div class="field-group">' +
+        '<label for="editNombrePortero">Nombre del portero</label>' +
+        '<input type="text" id="editNombrePortero" value="' + nombreActual.replace(/"/g, "&quot;") + '">' +
+      '</div>' +
+      '<div class="field-group">' +
+        '<label>Lateralidad</label>' +
+        '<div class="radio-group">' +
+          '<label class="radio-option"><input type="radio" name="editLateralidad" value="Derecha" ' + (lateralidadActual === "Derecha" ? "checked" : "") + '> Derecha</label>' +
+          '<label class="radio-option"><input type="radio" name="editLateralidad" value="Izquierda" ' + (lateralidadActual === "Izquierda" ? "checked" : "") + '> Izquierda</label>' +
+          '<label class="radio-option"><input type="radio" name="editLateralidad" value="N/D" ' + (lateralidadActual === "N/D" ? "checked" : "") + '> N/D</label>' +
+        '</div>' +
+      '</div>' +
+      '<div class="actions">' +
+        '<button class="btn-secondary" id="cancelarEdicionPortero">Cancelar</button>' +
+        '<button class="btn-primary" id="guardarEdicionPortero">Guardar cambios</button>' +
+      '</div>' +
+      '<div id="edicionPorteroError" class="login-error"></div>' +
+    '</div>';
+
+  document.getElementById("cancelarEdicionPortero").addEventListener("click", () => { cont.innerHTML = ""; });
+  document.getElementById("guardarEdicionPortero").addEventListener("click", () => guardarEdicionPortero(ev));
+}
+
+async function guardarEdicionPortero(ev){
+  const nuevoNombre = document.getElementById("editNombrePortero").value.trim();
+  const lateralidadEl = document.querySelector('input[name="editLateralidad"]:checked');
+  const errorEl = document.getElementById("edicionPorteroError");
+  if (!nuevoNombre){
+    errorEl.textContent = "El nombre no puede quedar vacío.";
+    return;
+  }
+  const nuevaLateralidad = lateralidadEl ? lateralidadEl.value : "N/D";
+
+  try {
+    const res = await fetch(
+      SUPABASE_URL + "/rest/v1/porteros?id=eq." + encodeURIComponent(ev.portero_id),
+      {
+        method: "PATCH",
+        headers: sbHeaders({ "Prefer": "return=minimal" }),
+        body: JSON.stringify({ nombre: nuevoNombre, lateralidad: nuevaLateralidad })
+      }
+    );
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
+    // Refleja el cambio en todas las evaluaciones cargadas de este mismo portero
+    evaluacionesCargadas.forEach(e => {
+      if (e.portero_id !== ev.portero_id) return;
+      const p = Array.isArray(e.porteros) ? e.porteros[0] : e.porteros;
+      if (p){ p.nombre = nuevoNombre; p.lateralidad = nuevaLateralidad; }
+    });
+
+    document.getElementById("editarPorteroForm").innerHTML = "";
+    pintarListaGuardadas(document.getElementById("buscarGuardadas").value);
+    abrirDetalleEvaluacion(ev);
+    setStatus("Datos del portero actualizados.", "var(--success)");
+  } catch(e){
+    errorEl.textContent = "No se pudo guardar. Comprueba tu conexión.";
+  }
+}
+
+function confirmarEliminarEvaluacion(ev){
+  const nombre = nombrePorteroDe(ev);
+  if (!confirm('¿Eliminar definitivamente la evaluación de "' + nombre + '"? Esta acción no se puede deshacer.')) return;
+  eliminarEvaluacion(ev);
+}
+
+async function eliminarEvaluacion(ev){
+  try {
+    const token = await obtenerAccessToken();
+    const res = await fetch(SUPABASE_URL + "/functions/v1/eliminar-evaluacion", {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ evaluacion_id: ev.id })
+    });
+    if (!res.ok){
+      let mensaje = "HTTP " + res.status;
+      try { const cuerpo = await res.json(); if (cuerpo.error) mensaje = cuerpo.error; } catch(e){}
+      throw new Error(mensaje);
+    }
+    evaluacionesCargadas = evaluacionesCargadas.filter(e => e.id !== ev.id);
+    document.getElementById("modalDetalle").style.display = "none";
+    pintarListaGuardadas(document.getElementById("buscarGuardadas").value);
+    setStatus("Evaluación eliminada.", "var(--success)");
+  } catch(e){
+    setStatus("No se pudo eliminar: " + e.message, "var(--danger)");
   }
 }
 
@@ -1003,12 +1193,9 @@ document.getElementById("guardar").addEventListener("click", () => {
   const evaluadorEl = document.getElementById("evaluador");
   const evaluador = evaluadorEl.value.trim();
   if (!evaluador){
-    setStatus("El técnico es obligatorio.", "var(--danger)");
-    evaluadorEl.style.borderColor = "var(--danger)";
-    evaluadorEl.focus();
+    setStatus("No se ha podido identificar tu perfil de técnico. Recarga la página.", "var(--danger)");
     return;
   }
-  evaluadorEl.style.borderColor = "";
 
   const nombreEl = document.getElementById("nombre");
   const nombre = nombreEl.value.trim();
@@ -1174,7 +1361,6 @@ async function guardarEnSupabase(p){
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      evaluador: p.evaluador,
       nombre: p.nombre,
       lateralidad: p.lateralidad,
       anioNacimiento: p.anioNacimiento,
@@ -1262,7 +1448,7 @@ function recopilarEstadoFormulario(){
 }
 
 function estadoFormularioVacio(estado){
-  const sinTexto = !(estado.evaluador || "").trim() && !(estado.nombre || "").trim() && !(estado.equipo || "").trim() &&
+  const sinTexto = !(estado.nombre || "").trim() && !(estado.equipo || "").trim() &&
     !(estado.partido || "").trim() && !(estado.observaciones || "").trim();
   const sinPuntuaciones = !estado.valores || Object.values(estado.valores).every(v => v.nd);
   return sinTexto && sinPuntuaciones;
@@ -1284,7 +1470,7 @@ function borrarBorrador(){
 }
 
 function aplicarCamposBorrador(borrador){
-  document.getElementById("evaluador").value = borrador.evaluador || "";
+  // El técnico no se restaura desde el borrador: siempre es el de la sesión activa.
   document.getElementById("nombre").value = borrador.nombre || "";
   document.getElementById("equipo").value = borrador.equipo || "";
   const lat = document.querySelector('input[name="lateralidad"][value="' + borrador.lateralidad + '"]');
@@ -1524,6 +1710,7 @@ document.getElementById("exportar").addEventListener("click", async () => {
 function iniciarApp(){
   document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
 
+  cargarPerfilActual();
   cargarModalidades().then(intentarRestaurarBorrador);
   renderSavedList();
   cargarListaPorteros();
@@ -1577,7 +1764,6 @@ function activarAutocompletado(inputEl, contenedorEl, obtenerLista){
   });
 }
 
-activarAutocompletado(document.getElementById("evaluador"), document.getElementById("sugerenciasEvaluador"), () => tecnicosDisponibles);
 activarAutocompletado(document.getElementById("nombre"), document.getElementById("sugerencias"), () => porterosDisponibles);
 activarAutocompletado(document.getElementById("equipo"), document.getElementById("sugerenciasEquipo"), () => equiposDisponibles);
 
