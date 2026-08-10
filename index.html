@@ -451,6 +451,7 @@
   <h1>Captación</h1>
   <div style="display:flex; align-items:center; gap:10px;">
     <img src="icons/icon-512.png" alt="Logo Jose Baena" class="header-logo">
+    <button id="btnAuditoria" class="btn-secondary" style="padding:6px 12px; font-size:12px; display:none;">Auditoría</button>
     <button id="btnLogout" class="btn-secondary" style="padding:6px 12px; font-size:12px;">Salir</button>
   </div>
 </header>
@@ -574,6 +575,16 @@
   </div>
 </div>
 
+<div id="modalAuditoria" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <h2 style="margin-top:0;">Auditoría</h2>
+      <button class="btn-secondary" id="cerrarAuditoria" style="flex:none;padding:6px 14px;">Cerrar</button>
+    </div>
+    <div id="auditoriaContenido"></div>
+  </div>
+</div>
+
 <div class="saved-section">
   <h2>Evaluaciones guardadas</h2>
   <div class="field-group" style="margin-bottom:10px;">
@@ -636,11 +647,69 @@ async function cargarPerfilActual(){
   if (!perfilActual || !perfilActual.nombre){
     setStatus("No se ha encontrado tu perfil de técnico. Pide a un coordinador que lo configure.", "var(--danger)");
   }
+
+  document.getElementById("btnAuditoria").style.display = esCoordinador() ? "inline-block" : "none";
 }
 
 function esCoordinador(){
   return !!(perfilActual && perfilActual.rol === "coordinador");
 }
+
+const ACCION_ETIQUETA = {
+  crear_evaluacion: "Evaluación creada",
+  editar_portero: "Portero editado",
+  eliminar_evaluacion: "Evaluación eliminada"
+};
+
+async function abrirAuditoria(){
+  const modal = document.getElementById("modalAuditoria");
+  const cont = document.getElementById("auditoriaContenido");
+  cont.innerHTML = '<div class="empty">Cargando…</div>';
+  modal.style.display = "flex";
+
+  try {
+    const res = await fetch(
+      SUPABASE_URL + "/rest/v1/auditoria?select=*&order=creado_en.desc&limit=200",
+      { headers: sbHeaders() }
+    );
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const filas = await res.json();
+
+    if (filas.length === 0){
+      cont.innerHTML = '<div class="empty">Todavía no hay ningún movimiento registrado.</div>';
+      return;
+    }
+
+    cont.innerHTML = filas.map(f => {
+      const fecha = new Date(f.creado_en);
+      const cuando = fecha.toLocaleDateString() + " " + fecha.toLocaleTimeString().slice(0,5);
+      const etiqueta = ACCION_ETIQUETA[f.accion] || f.accion;
+      let detalleTexto = "";
+      if (f.accion === "crear_evaluacion" && f.detalle){
+        detalleTexto = f.detalle.portero + " · " + f.detalle.equipo;
+      } else if (f.accion === "eliminar_evaluacion" && f.detalle){
+        detalleTexto = f.detalle.portero || "";
+      } else if (f.accion === "editar_portero" && f.detalle){
+        const a = f.detalle.antes || {}, d = f.detalle.despues || {};
+        detalleTexto = (a.nombre || "") + " (" + (a.lateralidad || "N/D") + ") → " + (d.nombre || "") + " (" + (d.lateralidad || "N/D") + ")";
+      }
+      return '<div class="resumen-item" style="align-items:flex-start;">' +
+        '<span class="etiqueta">' + cuando + '<br><span style="color:var(--text-muted);font-size:11px;">' + (f.actor_nombre || "—") + '</span></span>' +
+        '<span class="valor" style="text-align:right;">' + etiqueta + '<br><span style="font-weight:400;color:var(--text-muted);font-size:12px;">' + detalleTexto + '</span></span>' +
+        '</div>';
+    }).join("");
+  } catch(e){
+    cont.innerHTML = '<div class="empty" style="color:var(--danger);">No se pudo cargar la auditoría. Comprueba tu conexión.</div>';
+  }
+}
+
+document.getElementById("btnAuditoria").addEventListener("click", abrirAuditoria);
+document.getElementById("cerrarAuditoria").addEventListener("click", () => {
+  document.getElementById("modalAuditoria").style.display = "none";
+});
+document.getElementById("modalAuditoria").addEventListener("click", e => {
+  if (e.target.id === "modalAuditoria") document.getElementById("modalAuditoria").style.display = "none";
+});
 
 async function obtenerAccessToken(){
   const { data } = await sb.auth.getSession();
@@ -719,7 +788,7 @@ function sbHeaders(extra){
 async function loadSaved(){
   try {
     const res = await fetch(
-      SUPABASE_URL + "/rest/v1/" + TABLE + "?select=*,porteros(nombre,lateralidad,anio_nacimiento),equipos(nombre),modalidades(nombre),tecnicos(nombre)&order=created_at.desc",
+      SUPABASE_URL + "/rest/v1/" + TABLE + "?select=*,porteros(nombre,lateralidad,anio_nacimiento),equipos(nombre),modalidades(nombre),tecnicos(nombre)&eliminado_en=is.null&order=created_at.desc",
       { headers: sbHeaders() }
     );
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -1103,15 +1172,21 @@ async function guardarEdicionPortero(ev){
   const nuevaLateralidad = lateralidadEl ? lateralidadEl.value : "N/D";
 
   try {
-    const res = await fetch(
-      SUPABASE_URL + "/rest/v1/porteros?id=eq." + encodeURIComponent(ev.portero_id),
-      {
-        method: "PATCH",
-        headers: sbHeaders({ "Prefer": "return=minimal" }),
-        body: JSON.stringify({ nombre: nuevoNombre, lateralidad: nuevaLateralidad })
-      }
-    );
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    const token = await obtenerAccessToken();
+    const res = await fetch(SUPABASE_URL + "/functions/v1/editar-portero", {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ portero_id: ev.portero_id, nombre: nuevoNombre, lateralidad: nuevaLateralidad })
+    });
+    if (!res.ok){
+      let mensaje = "HTTP " + res.status;
+      try { const cuerpo = await res.json(); if (cuerpo.error) mensaje = cuerpo.error; } catch(e){}
+      throw new Error(mensaje);
+    }
 
     // Refleja el cambio en todas las evaluaciones cargadas de este mismo portero
     evaluacionesCargadas.forEach(e => {
@@ -1125,7 +1200,7 @@ async function guardarEdicionPortero(ev){
     abrirDetalleEvaluacion(ev);
     setStatus("Datos del portero actualizados.", "var(--success)");
   } catch(e){
-    errorEl.textContent = "No se pudo guardar. Comprueba tu conexión.";
+    errorEl.textContent = "No se pudo guardar: " + e.message;
   }
 }
 
