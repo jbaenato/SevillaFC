@@ -392,13 +392,53 @@
     padding: 6px 10px;
     border-radius: 8px;
   }
+  .login-screen {
+    max-width: 340px;
+    margin: 60px auto 0;
+    text-align: center;
+  }
+  .login-logo {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 10px;
+  }
+  .login-screen .field-group { text-align: left; }
+  .login-error {
+    color: var(--danger);
+    font-size: 13px;
+    margin-top: 12px;
+    min-height: 18px;
+  }
 </style>
 </head>
 <body>
 
+<div id="loginScreen" class="login-screen">
+  <img src="icons/icon-512.png" alt="Logo Jose Baena" class="login-logo">
+  <h1 style="margin-bottom:4px;">Captación</h1>
+  <p style="color:var(--text-muted); font-size:13px; margin-top:0;">Acceso solo para técnicos autorizados</p>
+  <div class="field-group">
+    <label for="loginEmail">Email</label>
+    <input type="email" id="loginEmail" autocomplete="username">
+  </div>
+  <div class="field-group">
+    <label for="loginPassword">Contraseña</label>
+    <input type="password" id="loginPassword" autocomplete="current-password">
+  </div>
+  <button class="btn-primary" id="btnLogin" style="width:100%;">Entrar</button>
+  <div id="loginError" class="login-error"></div>
+</div>
+
+<div id="appContainer" style="display:none;">
+
 <header class="app-header">
   <h1>Captación</h1>
-  <img src="icons/icon-512.png" alt="Logo Jose Baena" class="header-logo">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <img src="icons/icon-512.png" alt="Logo Jose Baena" class="header-logo">
+    <button id="btnLogout" class="btn-secondary" style="padding:6px 12px; font-size:12px;">Salir</button>
+  </div>
 </header>
 
 <div id="borradorBanner" class="banner banner-borrador">
@@ -529,6 +569,9 @@
   <div class="card" id="savedList"></div>
 </div>
 
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 // --- Configuración de Supabase ---
 const SUPABASE_URL = "https://ramnvcuwyfhepspzzzpn.supabase.co";
@@ -549,6 +592,73 @@ const CATEGORY_COL = {
 let DATA = [];             // se construye dinámicamente según la modalidad elegida
 let valores = {};          // clave: item.id (uuid) -> { nd, val }
 let modalidadSeleccionada = null; // { id, nombre }
+let porterosDisponibles = [];
+let equiposDisponibles = [];
+let tecnicosDisponibles = [];
+
+// --- Autenticación (Supabase Auth) ---
+// El cliente 'sb' se usa solo para login/logout/sesión. Las lecturas de datos
+// siguen haciéndose con fetch() + sbHeaders(), añadiendo el token de sesión.
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let sesionActual = null;
+let appIniciada = false;
+
+async function obtenerAccessToken(){
+  const { data } = await sb.auth.getSession();
+  return data.session ? data.session.access_token : null;
+}
+
+function mostrarLogin(){
+  document.getElementById("loginScreen").style.display = "block";
+  document.getElementById("appContainer").style.display = "none";
+}
+
+function mostrarApp(){
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("appContainer").style.display = "block";
+  if (!appIniciada){
+    appIniciada = true;
+    iniciarApp();
+  }
+}
+
+document.getElementById("btnLogin").addEventListener("click", async () => {
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const errorEl = document.getElementById("loginError");
+  errorEl.textContent = "";
+  if (!email || !password){
+    errorEl.textContent = "Introduce tu email y contraseña.";
+    return;
+  }
+  const btn = document.getElementById("btnLogin");
+  btn.disabled = true;
+  btn.textContent = "Entrando…";
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  btn.disabled = false;
+  btn.textContent = "Entrar";
+  if (error){
+    errorEl.textContent = "Email o contraseña incorrectos.";
+  }
+});
+
+document.getElementById("loginPassword").addEventListener("keydown", e => {
+  if (e.key === "Enter") document.getElementById("btnLogin").click();
+});
+
+document.getElementById("btnLogout").addEventListener("click", async () => {
+  await sb.auth.signOut();
+});
+
+sb.auth.onAuthStateChange((_evento, session) => {
+  sesionActual = session;
+  if (session) mostrarApp(); else mostrarLogin();
+});
+
+sb.auth.getSession().then(({ data }) => {
+  sesionActual = data.session;
+  if (data.session) mostrarApp(); else mostrarLogin();
+});
 
 function fmt(v){ return v.toFixed(2).replace(".", ","); }
 
@@ -559,9 +669,10 @@ function categoryAverage(sec){
 }
 
 function sbHeaders(extra){
+  const token = sesionActual ? sesionActual.access_token : SUPABASE_KEY;
   return Object.assign({
     "apikey": SUPABASE_KEY,
-    "Authorization": "Bearer " + SUPABASE_KEY,
+    "Authorization": "Bearer " + token,
     "Content-Type": "application/json"
   }, extra || {});
 }
@@ -580,147 +691,9 @@ async function loadSaved(){
   }
 }
 
-async function insertEvaluacion(row){
-  const res = await fetch(SUPABASE_URL + "/rest/v1/" + TABLE, {
-    method: "POST",
-    headers: sbHeaders({ "Prefer": "return=representation" }),
-    body: JSON.stringify(row)
-  });
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  const creado = await res.json();
-  return creado[0].id;
-}
-
-async function insertRespuestas(filas){
-  if (filas.length === 0) return;
-  const res = await fetch(SUPABASE_URL + "/rest/v1/respuestas_evaluacion", {
-    method: "POST",
-    headers: sbHeaders({ "Prefer": "return=minimal" }),
-    body: JSON.stringify(filas)
-  });
-  if (!res.ok) throw new Error("HTTP " + res.status);
-}
-
-// Busca un portero por nombre; si no existe, lo crea. Si llegan datos nuevos de lateralidad/año, los actualiza.
-// Si dos guardados simultáneos intentan crear el mismo portero a la vez, el índice único de la base de
-// datos rechazará el segundo insert; en ese caso, simplemente reutilizamos el que ya se creó.
-async function getOrCreatePorteroId(nombre, lateralidad, anioNacimiento){
-  const buscar = await fetch(
-    SUPABASE_URL + "/rest/v1/porteros?nombre=ilike." + encodeURIComponent(nombre) + "&select=id",
-    { headers: sbHeaders() }
-  );
-  if (!buscar.ok) throw new Error("HTTP " + buscar.status);
-  const encontrados = await buscar.json();
-
-  if (encontrados.length > 0){
-    const id = encontrados[0].id;
-    const patch = {};
-    if (lateralidad && lateralidad !== "N/D") patch.lateralidad = lateralidad;
-    if (anioNacimiento) patch.anio_nacimiento = anioNacimiento;
-    if (Object.keys(patch).length > 0){
-      await fetch(SUPABASE_URL + "/rest/v1/porteros?id=eq." + encodeURIComponent(id), {
-        method: "PATCH",
-        headers: sbHeaders({ "Prefer": "return=minimal" }),
-        body: JSON.stringify(patch)
-      });
-    }
-    return id;
-  }
-
-  const crear = await fetch(SUPABASE_URL + "/rest/v1/porteros", {
-    method: "POST",
-    headers: sbHeaders({ "Prefer": "return=representation" }),
-    body: JSON.stringify({
-      nombre: nombre,
-      lateralidad: lateralidad || "N/D",
-      anio_nacimiento: anioNacimiento || null
-    })
-  });
-  if (crear.ok){
-    const creado = await crear.json();
-    return creado[0].id;
-  }
-  if (crear.status === 409){
-    // Otro guardado simultáneo lo creó primero: lo buscamos y lo reutilizamos.
-    const reintento = await fetch(
-      SUPABASE_URL + "/rest/v1/porteros?nombre=ilike." + encodeURIComponent(nombre) + "&select=id",
-      { headers: sbHeaders() }
-    );
-    if (reintento.ok){
-      const encontrado2 = await reintento.json();
-      if (encontrado2.length > 0) return encontrado2[0].id;
-    }
-  }
-  throw new Error("HTTP " + crear.status);
-}
-
-let porterosDisponibles = [];
-let equiposDisponibles = [];
-let tecnicosDisponibles = [];
-
-// Busca un equipo por nombre; si no existe, lo crea.
-async function getOrCreateEquipoId(nombre){
-  const buscar = await fetch(
-    SUPABASE_URL + "/rest/v1/equipos?nombre=ilike." + encodeURIComponent(nombre) + "&select=id",
-    { headers: sbHeaders() }
-  );
-  if (!buscar.ok) throw new Error("HTTP " + buscar.status);
-  const encontrados = await buscar.json();
-  if (encontrados.length > 0) return encontrados[0].id;
-
-  const crear = await fetch(SUPABASE_URL + "/rest/v1/equipos", {
-    method: "POST",
-    headers: sbHeaders({ "Prefer": "return=representation" }),
-    body: JSON.stringify({ nombre: nombre })
-  });
-  if (crear.ok){
-    const creado = await crear.json();
-    return creado[0].id;
-  }
-  if (crear.status === 409){
-    // Otro guardado simultáneo lo creó primero: lo buscamos y lo reutilizamos.
-    const reintento = await fetch(
-      SUPABASE_URL + "/rest/v1/equipos?nombre=ilike." + encodeURIComponent(nombre) + "&select=id",
-      { headers: sbHeaders() }
-    );
-    if (reintento.ok){
-      const encontrado2 = await reintento.json();
-      if (encontrado2.length > 0) return encontrado2[0].id;
-    }
-  }
-  throw new Error("HTTP " + crear.status);
-}
-
-async function getOrCreateTecnicoId(nombre){
-  const buscar = await fetch(
-    SUPABASE_URL + "/rest/v1/tecnicos?nombre=ilike." + encodeURIComponent(nombre) + "&select=id",
-    { headers: sbHeaders() }
-  );
-  if (!buscar.ok) throw new Error("HTTP " + buscar.status);
-  const encontrados = await buscar.json();
-  if (encontrados.length > 0) return encontrados[0].id;
-
-  const crear = await fetch(SUPABASE_URL + "/rest/v1/tecnicos", {
-    method: "POST",
-    headers: sbHeaders({ "Prefer": "return=representation" }),
-    body: JSON.stringify({ nombre: nombre })
-  });
-  if (crear.ok){
-    const creado = await crear.json();
-    return creado[0].id;
-  }
-  if (crear.status === 409){
-    const reintento = await fetch(
-      SUPABASE_URL + "/rest/v1/tecnicos?nombre=ilike." + encodeURIComponent(nombre) + "&select=id",
-      { headers: sbHeaders() }
-    );
-    if (reintento.ok){
-      const encontrado2 = await reintento.json();
-      if (encontrado2.length > 0) return encontrado2[0].id;
-    }
-  }
-  throw new Error("HTTP " + crear.status);
-}
+// Nota: la creación/inserción de evaluaciones, respuestas, porteros, equipos y técnicos
+// ya no se hace desde el navegador — se centraliza en la Edge Function "guardar-evaluacion"
+// para que las políticas RLS puedan cerrar la escritura directa desde el cliente.
 
 async function cargarListaPorteros(){
   try {
@@ -1184,16 +1157,38 @@ document.getElementById("volverEditar").addEventListener("click", () => {
   document.getElementById("modalRepaso").style.display = "none";
 });
 
-// Realiza el guardado real contra Supabase: resuelve los IDs de técnico/portero/equipo
-// y crea la evaluación + sus respuestas. Se usa tanto al guardar en el momento como al
-// sincronizar evaluaciones que quedaron pendientes por falta de conexión.
+// Realiza el guardado real: llama a la Edge Function "guardar-evaluacion", que se ejecuta
+// en el servidor con permisos elevados (service_role) y resuelve ahí los IDs de técnico/
+// portero/equipo y crea la evaluación + sus respuestas. El navegador nunca escribe directamente
+// en las tablas (las políticas RLS solo permiten lectura a usuarios autenticados).
+// Se usa tanto al guardar en el momento como al sincronizar evaluaciones pendientes offline.
 async function guardarEnSupabase(p){
-  const row = Object.assign({}, p.row);
-  row.tecnico_id = await getOrCreateTecnicoId(p.evaluador);
-  row.portero_id = await getOrCreatePorteroId(p.nombre, p.lateralidad, p.anioNacimiento);
-  row.equipo_id = await getOrCreateEquipoId(p.equipo);
-  const evaluacionId = await insertEvaluacion(row);
-  await insertRespuestas(p.respuestas.map(r => ({ evaluacion_id: evaluacionId, item_id: r.item_id, valor: r.valor })));
+  const token = await obtenerAccessToken();
+  if (!token) throw new Error("Sesión no válida. Vuelve a iniciar sesión.");
+
+  const res = await fetch(SUPABASE_URL + "/functions/v1/guardar-evaluacion", {
+    method: "POST",
+    headers: {
+      "apikey": SUPABASE_KEY,
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      evaluador: p.evaluador,
+      nombre: p.nombre,
+      lateralidad: p.lateralidad,
+      anioNacimiento: p.anioNacimiento,
+      equipo: p.equipo,
+      row: p.row,
+      respuestas: p.respuestas
+    })
+  });
+
+  if (!res.ok){
+    let mensaje = "HTTP " + res.status;
+    try { const cuerpo = await res.json(); if (cuerpo.error) mensaje = cuerpo.error; } catch(e){}
+    throw new Error(mensaje);
+  }
 }
 
 document.getElementById("confirmarGuardar").addEventListener("click", async () => {
@@ -1526,21 +1521,23 @@ document.getElementById("exportar").addEventListener("click", async () => {
   setStatus("Archivo exportado (" + list.length + " evaluación/es). Ábrelo con Excel o Google Sheets.", "var(--success)");
 });
 
-document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
+function iniciarApp(){
+  document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
 
-cargarModalidades().then(intentarRestaurarBorrador);
-renderSavedList();
-cargarListaPorteros();
-cargarListaEquipos();
-cargarListaTecnicos();
-actualizarIndicadorPendientes();
-sincronizarPendientes();
+  cargarModalidades().then(intentarRestaurarBorrador);
+  renderSavedList();
+  cargarListaPorteros();
+  cargarListaEquipos();
+  cargarListaTecnicos();
+  actualizarIndicadorPendientes();
+  sincronizarPendientes();
 
-// Autoguardado del borrador: cualquier cambio en los campos del formulario (texto o radios),
-// más un intervalo de seguridad por si algún cambio no dispara los eventos anteriores.
-document.getElementById("restoFormulario").addEventListener("input", guardarBorrador);
-document.getElementById("restoFormulario").addEventListener("change", guardarBorrador);
-setInterval(guardarBorrador, 8000);
+  // Autoguardado del borrador: cualquier cambio en los campos del formulario (texto o radios),
+  // más un intervalo de seguridad por si algún cambio no dispara los eventos anteriores.
+  document.getElementById("restoFormulario").addEventListener("input", guardarBorrador);
+  document.getElementById("restoFormulario").addEventListener("change", guardarBorrador);
+  setInterval(guardarBorrador, 8000);
+}
 
 function activarAutocompletado(inputEl, contenedorEl, obtenerLista){
   function mostrar(){

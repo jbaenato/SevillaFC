@@ -1,4 +1,4 @@
-const CACHE_NAME = "porteros-cache-v20";
+const CACHE_NAME = "porteros-cache-v21";
 const FILES_TO_CACHE = [
   "./index.html",
   "./manifest.json",
@@ -9,8 +9,6 @@ const FILES_TO_CACHE = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
-      // { cache: "reload" } evita que se cuele una copia antigua desde el propio
-      // caché HTTP del navegador al construir el caché del service worker.
       Promise.all(
         FILES_TO_CACHE.map((url) =>
           fetch(url, { cache: "reload" }).then((res) => cache.put(url, res))
@@ -31,9 +29,10 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // Red primero: si hay conexión, siempre se sirve la versión más reciente
-  // y se refresca el caché de paso. Si falla (sin conexión), se usa el caché
-  // guardado como reserva para que la app siga funcionando offline.
+  // Solo se cachean peticiones GET (login y guardado son POST y nunca deben servirse
+  // desde caché ni intentar guardarse en ella; la API de Cache además no admite POST).
+  if (event.request.method !== "GET") return;
+
   event.respondWith(
     fetch(event.request)
       .then((res) => {
