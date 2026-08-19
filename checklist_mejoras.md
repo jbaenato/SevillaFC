@@ -10,12 +10,12 @@ Marca `[x]` cuando se implemente. Añade líneas nuevas donde encajen a medida q
 
 - [x] **Auditoría de acciones sensibles** (crear evaluación, editar portero, eliminar evaluación) — tabla `auditoria`, visible solo para coordinador desde la app.
 - [x] **Borrado lógico de evaluaciones** (`eliminado_en` / `eliminado_por`) en vez de borrado físico — recuperable en caso de error.
-- [ ] **Validación de datos en las Edge Functions** — comprobar en el servidor que las puntuaciones estén en rango 0–5, que `item_id` pertenezca de verdad a la modalidad de la evaluación, etc. (ahora mismo se confía en lo que manda el cliente).
-- [ ] **Visibilidad cuando algo falla** — revisar Edge Functions → Logs periódicamente, y valorar integrar algo tipo Sentry (capa gratuita) para errores del cliente.
+- [x] **Validación de datos en las Edge Functions** — `guardar-evaluacion` y `editar-evaluacion` ya validan en servidor: evaluación final A-D, observaciones obligatorias si D, lateralidad/visionado válidos, puntuaciones en rango 0–5, e ítems pertenecientes a la modalidad correcta.
+- [x] **Visibilidad cuando algo falla** — Sentry integrado (listo para activar poniendo el DSN en `app.js`), y se distingue entre fallo de red real (se encola offline) y rechazo del servidor (se muestra directamente, sin bloquear la cola de otras evaluaciones pendientes).
 
 ## 🟡 Prioridad media — mantenibilidad
 
-- [ ] **Separar `index.html` en `app.js` + `styles.css`** — el archivo único ya ronda las 1.600 líneas.
+- [x] **Separar `index.html` en `app.js` + `styles.css`** — hecho: `index.html` ahora solo contiene estructura.
 - [ ] **Pruebas automáticas mínimas** del flujo crítico (login → guardar evaluación → aparece en la lista), aunque sea con Playwright.
 - [ ] **Entorno de pruebas separado** — un proyecto Supabase de desarrollo (gratis) para probar cambios de esquema/RLS/Edge Functions antes de tocar producción.
 - [ ] **Despliegue automatizado** con GitHub Actions al hacer push a `main`, para evitar subir el archivo equivocado o el despliegue a medias.
@@ -30,7 +30,7 @@ Marca `[x]` cuando se implemente. Añade líneas nuevas donde encajen a medida q
 ## 🔵 A futuro, si el proyecto escala
 
 - [ ] **Paginación en la búsqueda** — mover el filtrado al servidor cuando haya muchas evaluaciones (ahora se filtra todo en el cliente).
-- [ ] **Detección/fusión de equipos duplicados** (ej. "Real Betis" vs "R. Betis" vs "Betis") para no fragmentar los informes de Power BI.
+- [x] **Detección/fusión de equipos duplicados** (ej. "Real Betis" vs "R. Betis" vs "Betis") — panel "Equipos" (solo coordinador) para fusionarlos manualmente.
 
 ---
 
