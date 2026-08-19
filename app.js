@@ -4,18 +4,14 @@ const SUPABASE_KEY = "sb_publishable_6B6PMd8eB85OKIS1e74Qgg_YPmTaAdj";
 const TABLE = "evaluaciones";
 
 // --- Seguimiento de errores (Sentry) ---
-// Deja SENTRY_DSN vacío para desactivarlo sin que falle nada; rellénalo con el DSN real
-// de tu proyecto en sentry.io (Settings → Client Keys) para activarlo.
-const SENTRY_DSN = "https://97816607d64d3c79d2d51876240b2b4b@o4511937683259392.ingest.de.sentry.io/4511937734246480";
-if (SENTRY_DSN && window.Sentry){
-  Sentry.init({ dsn: SENTRY_DSN, environment: "produccion" });
-}
+// El Loader Script (cargado en index.html, primer <script> de la página) ya trae el DSN
+// incrustado y se inicializa solo — no hace falta llamar a Sentry.init() aquí.
 
-// Envía un error a Sentry (si está configurado) sin interrumpir el flujo de la app aunque
-// falle el propio envío. "contexto" son datos extra para facilitar el diagnóstico.
+// Envía un error a Sentry (si el Loader Script llegó a cargar) sin interrumpir el flujo de
+// la app aunque falle el propio envío. "contexto" son datos extra para el diagnóstico.
 function reportarError(error, contexto){
   try {
-    if (SENTRY_DSN && window.Sentry){
+    if (window.Sentry){
       Sentry.captureException(error, { extra: contexto || {} });
     } else {
       console.error("[reportarError]", error, contexto || {});
