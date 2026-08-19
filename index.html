@@ -2,6 +2,14 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<script>
+  window.sentryOnLoad = function () {
+    Sentry.init({
+      tunnel: "https://ramnvcuwyfhepspzzzpn.supabase.co/functions/v1/sentry-tunnel",
+      environment: "produccion"
+    });
+  };
+</script>
 <script src="https://js-de.sentry-cdn.com/97816607d64d3c79d2d51876240b2b4b.min.js" crossorigin="anonymous"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
