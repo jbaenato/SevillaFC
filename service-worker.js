@@ -1,4 +1,4 @@
-const CACHE_NAME = "porteros-cache-v22";
+const CACHE_NAME = "porteros-cache-v23";
 const FILES_TO_CACHE = [
   "./index.html",
   "./app.js",
@@ -42,6 +42,14 @@ self.addEventListener("fetch", (event) => {
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copia));
         return res;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() =>
+        caches.match(event.request).then((cacheada) =>
+          cacheada || new Response("Sin conexión y sin copia guardada de este recurso.", {
+            status: 503,
+            statusText: "Sin conexión",
+            headers: { "Content-Type": "text/plain; charset=utf-8" }
+          })
+        )
+      )
   );
 });
