@@ -52,7 +52,7 @@ let perfilActual = null; // { nombre, rol } del técnico con sesión iniciada
 async function cargarPerfilActual(){
   try {
     const res = await fetch(
-      SUPABASE_URL + "/rest/v1/perfiles?select=nombre,rol",
+      SUPABASE_URL + "/rest/v1/perfiles?select=nombre,rol,aprobado",
       { headers: sbHeaders() }
     );
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -65,12 +65,9 @@ async function cargarPerfilActual(){
   const nombreTecnico = (perfilActual && perfilActual.nombre) ? perfilActual.nombre : (sesionActual ? sesionActual.user.email : "");
   document.getElementById("evaluador").value = nombreTecnico;
 
-  if (!perfilActual || !perfilActual.nombre){
-    setStatus("No se ha encontrado tu perfil de técnico. Pide a un coordinador que lo configure.", "var(--danger)");
-  }
-
   document.getElementById("btnAuditoria").style.display = esCoordinador() ? "inline-block" : "none";
   document.getElementById("btnEquipos").style.display = esCoordinador() ? "inline-block" : "none";
+  document.getElementById("btnSolicitudes").style.display = esCoordinador() ? "inline-block" : "none";
 }
 
 function esCoordinador(){
@@ -254,18 +251,113 @@ document.getElementById("modalEquipos").addEventListener("click", e => {
   if (e.target.id === "modalEquipos") document.getElementById("modalEquipos").style.display = "none";
 });
 
+// --- Solicitudes de acceso pendientes de aprobar (solo coordinador) ---
+
+async function abrirSolicitudes(){
+  const modal = document.getElementById("modalSolicitudes");
+  const cont = document.getElementById("solicitudesContenido");
+  cont.innerHTML = '<div class="empty">Cargando…</div>';
+  modal.style.display = "flex";
+
+  try {
+    const res = await fetch(
+      SUPABASE_URL + "/rest/v1/perfiles?select=id,nombre,rol&aprobado=eq.false&order=nombre.asc",
+      { headers: sbHeaders() }
+    );
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const pendientes = await res.json();
+
+    if (pendientes.length === 0){
+      cont.innerHTML = '<div class="empty">No hay ninguna solicitud pendiente.</div>';
+      return;
+    }
+
+    cont.innerHTML = pendientes.map(p =>
+      '<div class="resumen-item">' +
+        '<span class="etiqueta">' + (p.nombre || "—") + '</span>' +
+        '<button class="btn-primary" style="padding:6px 14px;font-size:12px;" data-aprobar="' + p.id + '">Aprobar</button>' +
+      '</div>'
+    ).join("") + '<div id="solicitudesError" class="login-error"></div>';
+
+    cont.querySelectorAll("[data-aprobar]").forEach(btn => {
+      btn.addEventListener("click", () => aprobarSolicitud(btn.dataset.aprobar));
+    });
+  } catch(e){
+    cont.innerHTML = '<div class="empty" style="color:var(--danger);">No se pudieron cargar las solicitudes. Comprueba tu conexión.</div>';
+    reportarError(e, { contexto: "abrirSolicitudes" });
+  }
+}
+
+async function aprobarSolicitud(usuarioId){
+  const errorEl = document.getElementById("solicitudesError");
+  try {
+    const token = await obtenerAccessToken();
+    const res = await fetch(SUPABASE_URL + "/functions/v1/aprobar-usuario", {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ usuario_id: usuarioId })
+    });
+    if (!res.ok){
+      let mensaje = "HTTP " + res.status;
+      try { const cuerpo = await res.json(); if (cuerpo.error) mensaje = cuerpo.error; } catch(e){}
+      throw new Error(mensaje);
+    }
+    setStatus("Cuenta aprobada.", "var(--success)");
+    abrirSolicitudes();
+  } catch(e){
+    if (errorEl) errorEl.textContent = "No se pudo aprobar: " + e.message;
+    reportarError(e, { contexto: "aprobarSolicitud", usuario_id: usuarioId });
+  }
+}
+
+document.getElementById("btnSolicitudes").addEventListener("click", abrirSolicitudes);
+document.getElementById("cerrarSolicitudes").addEventListener("click", () => {
+  document.getElementById("modalSolicitudes").style.display = "none";
+});
+document.getElementById("modalSolicitudes").addEventListener("click", e => {
+  if (e.target.id === "modalSolicitudes") document.getElementById("modalSolicitudes").style.display = "none";
+});
+
 async function obtenerAccessToken(){
   const { data } = await sb.auth.getSession();
   return data.session ? data.session.access_token : null;
 }
 
-function mostrarLogin(){
-  document.getElementById("loginScreen").style.display = "block";
+function ocultarTodasLasPantallas(){
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("registroScreen").style.display = "none";
+  document.getElementById("pendienteAprobacionScreen").style.display = "none";
   document.getElementById("appContainer").style.display = "none";
 }
 
-function mostrarApp(){
-  document.getElementById("loginScreen").style.display = "none";
+function mostrarLogin(){
+  ocultarTodasLasPantallas();
+  document.getElementById("loginScreen").style.display = "block";
+}
+
+function mostrarRegistro(){
+  ocultarTodasLasPantallas();
+  document.getElementById("registroScreen").style.display = "block";
+}
+
+function mostrarPendienteAprobacion(){
+  ocultarTodasLasPantallas();
+  document.getElementById("pendienteAprobacionScreen").style.display = "block";
+}
+
+async function mostrarApp(){
+  await cargarPerfilActual();
+
+  if (!perfilActual || !perfilActual.aprobado){
+    mostrarPendienteAprobacion();
+    return;
+  }
+
+  ocultarTodasLasPantallas();
   document.getElementById("appContainer").style.display = "block";
   if (!appIniciada){
     appIniciada = true;
@@ -295,6 +387,64 @@ document.getElementById("btnLogin").addEventListener("click", async () => {
 
 document.getElementById("loginPassword").addEventListener("keydown", e => {
   if (e.key === "Enter") document.getElementById("btnLogin").click();
+});
+
+document.getElementById("irARegistro").addEventListener("click", e => {
+  e.preventDefault();
+  document.getElementById("registroError").textContent = "";
+  mostrarRegistro();
+});
+
+document.getElementById("irALogin").addEventListener("click", e => {
+  e.preventDefault();
+  document.getElementById("loginError").textContent = "";
+  mostrarLogin();
+});
+
+document.getElementById("btnRegistro").addEventListener("click", async () => {
+  const nombre = document.getElementById("registroNombre").value.trim();
+  const email = document.getElementById("registroEmail").value.trim();
+  const password = document.getElementById("registroPassword").value;
+  const errorEl = document.getElementById("registroError");
+  errorEl.textContent = "";
+
+  if (!nombre){
+    errorEl.textContent = "Indica tu nombre y apellidos.";
+    return;
+  }
+  if (!email || !password){
+    errorEl.textContent = "Introduce tu email y contraseña.";
+    return;
+  }
+  if (password.length < 6){
+    errorEl.textContent = "La contraseña debe tener al menos 6 caracteres.";
+    return;
+  }
+
+  const btn = document.getElementById("btnRegistro");
+  btn.disabled = true;
+  btn.textContent = "Creando cuenta…";
+  const { error } = await sb.auth.signUp({
+    email,
+    password,
+    options: { data: { nombre: nombre } }
+  });
+  btn.disabled = false;
+  btn.textContent = "Crear cuenta";
+
+  if (error){
+    errorEl.textContent = error.message.includes("already registered") || error.message.includes("already been registered")
+      ? "Ya existe una cuenta con ese email."
+      : "No se pudo crear la cuenta: " + error.message;
+    return;
+  }
+  // signUp ya inicia sesión automáticamente si la confirmación de email está desactivada;
+  // el propio listener de sesión (onAuthStateChange) se encargará de mostrar la pantalla
+  // de "pendiente de aprobación", ya que la cuenta se crea con aprobado = false.
+});
+
+document.getElementById("btnSalirPendiente").addEventListener("click", async () => {
+  await sb.auth.signOut();
 });
 
 document.getElementById("btnLogout").addEventListener("click", async () => {
@@ -1517,7 +1667,6 @@ document.getElementById("exportar").addEventListener("click", async () => {
 function iniciarApp(){
   document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
 
-  cargarPerfilActual();
   cargarModalidades().then(intentarRestaurarBorrador);
   renderSavedList();
   cargarListaPorteros();

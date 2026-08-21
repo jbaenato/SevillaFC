@@ -40,6 +40,39 @@
   </div>
   <button class="btn-primary" id="btnLogin" style="width:100%;">Entrar</button>
   <div id="loginError" class="login-error"></div>
+  <p style="font-size:13px; margin-top:16px;">
+    ¿No tienes cuenta? <a href="#" id="irARegistro">Crear cuenta</a>
+  </p>
+</div>
+
+<div id="registroScreen" class="login-screen" style="display:none;">
+  <img src="icons/icon-512.png" alt="Logo Jose Baena" class="login-logo">
+  <h1 style="margin-bottom:4px;">Crear cuenta</h1>
+  <p style="color:var(--text-muted); font-size:13px; margin-top:0;">Un coordinador deberá aprobar tu acceso antes de que puedas usar la app</p>
+  <div class="field-group">
+    <label for="registroNombre">Tu nombre y apellidos</label>
+    <input type="text" id="registroNombre" autocomplete="name">
+  </div>
+  <div class="field-group">
+    <label for="registroEmail">Email</label>
+    <input type="email" id="registroEmail" autocomplete="username">
+  </div>
+  <div class="field-group">
+    <label for="registroPassword">Contraseña</label>
+    <input type="password" id="registroPassword" autocomplete="new-password">
+  </div>
+  <button class="btn-primary" id="btnRegistro" style="width:100%;">Crear cuenta</button>
+  <div id="registroError" class="login-error"></div>
+  <p style="font-size:13px; margin-top:16px;">
+    ¿Ya tienes cuenta? <a href="#" id="irALogin">Entrar</a>
+  </p>
+</div>
+
+<div id="pendienteAprobacionScreen" class="login-screen" style="display:none;">
+  <img src="icons/icon-512.png" alt="Logo Jose Baena" class="login-logo">
+  <h1 style="margin-bottom:4px;">Cuenta pendiente</h1>
+  <p style="color:var(--text-muted); font-size:14px;">Tu cuenta se ha creado correctamente, pero todavía no ha sido aprobada por un coordinador. Inténtalo de nuevo más tarde.</p>
+  <button class="btn-secondary" id="btnSalirPendiente" style="width:100%;">Salir</button>
 </div>
 
 <div id="appContainer" style="display:none;">
@@ -49,6 +82,7 @@
   <div style="display:flex; align-items:center; gap:10px;">
     <img src="icons/icon-512.png" alt="Logo Jose Baena" class="header-logo">
     <button id="btnEquipos" class="btn-secondary" style="padding:6px 12px; font-size:12px; display:none;">Equipos</button>
+    <button id="btnSolicitudes" class="btn-secondary" style="padding:6px 12px; font-size:12px; display:none;">Solicitudes</button>
     <button id="btnAuditoria" class="btn-secondary" style="padding:6px 12px; font-size:12px; display:none;">Auditoría</button>
     <button id="btnLogout" class="btn-secondary" style="padding:6px 12px; font-size:12px;">Salir</button>
   </div>
@@ -191,6 +225,16 @@
     </div>
     <p style="font-size:13px;color:var(--text-muted);margin-top:0;">Marca dos o más equipos que sean en realidad el mismo (por ejemplo, escritos de forma distinta) y fusiónalos en uno solo. Se reasignarán todas sus evaluaciones y se borrarán los sobrantes.</p>
     <div id="equiposContenido"></div>
+  </div>
+</div>
+
+<div id="modalSolicitudes" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <h2 style="margin-top:0;">Solicitudes de acceso</h2>
+      <button class="btn-secondary" id="cerrarSolicitudes" style="flex:none;padding:6px 14px;">Cerrar</button>
+    </div>
+    <div id="solicitudesContenido"></div>
   </div>
 </div>
 
