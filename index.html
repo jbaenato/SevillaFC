@@ -43,6 +43,9 @@
   <p style="font-size:13px; margin-top:16px;">
     ¿No tienes cuenta? <a href="#" id="irARegistro">Crear cuenta</a>
   </p>
+  <p style="font-size:13px; margin-top:6px;">
+    <a href="#" id="irAOlvide">¿Olvidaste tu contraseña?</a>
+  </p>
 </div>
 
 <div id="registroScreen" class="login-screen" style="display:none;">
@@ -66,6 +69,38 @@
   <p style="font-size:13px; margin-top:16px;">
     ¿Ya tienes cuenta? <a href="#" id="irALogin">Entrar</a>
   </p>
+</div>
+
+<div id="olvideScreen" class="login-screen" style="display:none;">
+  <img src="icons/icon-512.png" alt="Logo Jose Baena" class="login-logo">
+  <h1 style="margin-bottom:4px;">Recuperar contraseña</h1>
+  <p style="color:var(--text-muted); font-size:13px; margin-top:0;">Te enviaremos un enlace a tu email para que puedas poner una contraseña nueva.</p>
+  <div class="field-group">
+    <label for="olvideEmail">Email</label>
+    <input type="email" id="olvideEmail" autocomplete="username">
+  </div>
+  <button class="btn-primary" id="btnOlvide" style="width:100%;">Enviar enlace</button>
+  <div id="olvideError" class="login-error"></div>
+  <div id="olvideOk" style="display:none; color:var(--success); font-size:13px; margin-top:10px;">Si ese email tiene una cuenta, te hemos enviado un enlace para restablecer la contraseña. Revisa tu bandeja de entrada (y la carpeta de spam).</div>
+  <p style="font-size:13px; margin-top:16px;">
+    <a href="#" id="volverDesdeOlvide">Volver</a>
+  </p>
+</div>
+
+<div id="nuevaPasswordScreen" class="login-screen" style="display:none;">
+  <img src="icons/icon-512.png" alt="Logo Jose Baena" class="login-logo">
+  <h1 style="margin-bottom:4px;">Nueva contraseña</h1>
+  <p style="color:var(--text-muted); font-size:13px; margin-top:0;">Establece una nueva contraseña para tu cuenta.</p>
+  <div class="field-group">
+    <label for="nuevaPassword1">Nueva contraseña</label>
+    <input type="password" id="nuevaPassword1" autocomplete="new-password">
+  </div>
+  <div class="field-group">
+    <label for="nuevaPassword2">Repite la contraseña</label>
+    <input type="password" id="nuevaPassword2" autocomplete="new-password">
+  </div>
+  <button class="btn-primary" id="btnGuardarNuevaPassword" style="width:100%;">Guardar nueva contraseña</button>
+  <div id="nuevaPasswordError" class="login-error"></div>
 </div>
 
 <div id="pendienteAprobacionScreen" class="login-screen" style="display:none;">
