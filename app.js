@@ -552,6 +552,24 @@ sb.auth.onAuthStateChange((evento, session) => {
   if (session) mostrarApp(); else mostrarLogin();
 });
 
+// Supabase envía el enlace de recuperación con un "code" en la URL (formato PKCE) en vez
+// del token antiguo en el fragmento (#access_token=...). Hay que canjearlo explícitamente
+// para que se cree la sesión y se dispare el evento PASSWORD_RECOVERY de arriba.
+(function manejarEnlaceDeRecuperacion(){
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  if (!code) return;
+  sb.auth.exchangeCodeForSession(code).then(({ error }) => {
+    // Se limpia el "code" de la URL en cualquier caso, para no reintentar el canje si la
+    // página se recarga (un mismo código solo se puede usar una vez).
+    window.history.replaceState({}, document.title, window.location.pathname);
+    if (error){
+      mostrarLogin();
+      document.getElementById("loginError").textContent = "El enlace ha caducado o no es válido. Pide uno nuevo con \"¿Olvidaste tu contraseña?\".";
+    }
+  });
+})();
+
 sb.auth.getSession().then(({ data }) => {
   sesionActual = data.session;
   if (enRecuperacion) return;
