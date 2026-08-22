@@ -74,23 +74,26 @@
 <div id="olvideScreen" class="login-screen" style="display:none;">
   <img src="icons/icon-512.png" alt="Logo Jose Baena" class="login-logo">
   <h1 style="margin-bottom:4px;">Recuperar contraseña</h1>
-  <p style="color:var(--text-muted); font-size:13px; margin-top:0;">Te enviaremos un enlace a tu email para que puedas poner una contraseña nueva.</p>
+  <p style="color:var(--text-muted); font-size:13px; margin-top:0;">Te enviaremos un código de 6 dígitos a tu email.</p>
   <div class="field-group">
     <label for="olvideEmail">Email</label>
     <input type="email" id="olvideEmail" autocomplete="username">
   </div>
-  <button class="btn-primary" id="btnOlvide" style="width:100%;">Enviar enlace</button>
+  <button class="btn-primary" id="btnOlvide" style="width:100%;">Enviar código</button>
   <div id="olvideError" class="login-error"></div>
-  <div id="olvideOk" style="display:none; color:var(--success); font-size:13px; margin-top:10px;">Si ese email tiene una cuenta, te hemos enviado un enlace para restablecer la contraseña. Revisa tu bandeja de entrada (y la carpeta de spam).</div>
   <p style="font-size:13px; margin-top:16px;">
     <a href="#" id="volverDesdeOlvide">Volver</a>
   </p>
 </div>
 
-<div id="nuevaPasswordScreen" class="login-screen" style="display:none;">
+<div id="codigoRecuperacionScreen" class="login-screen" style="display:none;">
   <img src="icons/icon-512.png" alt="Logo Jose Baena" class="login-logo">
-  <h1 style="margin-bottom:4px;">Nueva contraseña</h1>
-  <p style="color:var(--text-muted); font-size:13px; margin-top:0;">Establece una nueva contraseña para tu cuenta.</p>
+  <h1 style="margin-bottom:4px;">Introduce el código</h1>
+  <p style="color:var(--text-muted); font-size:13px; margin-top:0;">Hemos enviado un código de 6 dígitos a tu email. Escríbelo aquí junto con tu nueva contraseña.</p>
+  <div class="field-group">
+    <label for="codigoRecuperacion">Código de 6 dígitos</label>
+    <input type="text" id="codigoRecuperacion" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+  </div>
   <div class="field-group">
     <label for="nuevaPassword1">Nueva contraseña</label>
     <input type="password" id="nuevaPassword1" autocomplete="new-password">
@@ -99,8 +102,11 @@
     <label for="nuevaPassword2">Repite la contraseña</label>
     <input type="password" id="nuevaPassword2" autocomplete="new-password">
   </div>
-  <button class="btn-primary" id="btnGuardarNuevaPassword" style="width:100%;">Guardar nueva contraseña</button>
+  <button class="btn-primary" id="btnGuardarNuevaPassword" style="width:100%;">Restablecer contraseña</button>
   <div id="nuevaPasswordError" class="login-error"></div>
+  <p style="font-size:13px; margin-top:16px;">
+    ¿No te llegó? <a href="#" id="reenviarCodigo">Volver a enviarlo</a>
+  </p>
 </div>
 
 <div id="pendienteAprobacionScreen" class="login-screen" style="display:none;">

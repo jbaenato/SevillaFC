@@ -348,7 +348,7 @@ function ocultarTodasLasPantallas(){
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("registroScreen").style.display = "none";
   document.getElementById("olvideScreen").style.display = "none";
-  document.getElementById("nuevaPasswordScreen").style.display = "none";
+  document.getElementById("codigoRecuperacionScreen").style.display = "none";
   document.getElementById("pendienteAprobacionScreen").style.display = "none";
   document.getElementById("appContainer").style.display = "none";
 }
@@ -462,11 +462,12 @@ document.getElementById("btnRegistro").addEventListener("click", async () => {
   // de "pendiente de aprobación", ya que la cuenta se crea con aprobado = false.
 });
 
+let emailEnRecuperacion = "";
+
 document.getElementById("irAOlvide").addEventListener("click", e => {
   e.preventDefault();
   document.getElementById("olvideEmail").value = document.getElementById("loginEmail").value;
   document.getElementById("olvideError").textContent = "";
-  document.getElementById("olvideOk").style.display = "none";
   ocultarTodasLasPantallas();
   document.getElementById("olvideScreen").style.display = "block";
 });
@@ -476,34 +477,56 @@ document.getElementById("volverDesdeOlvide").addEventListener("click", e => {
   mostrarLogin();
 });
 
-document.getElementById("btnOlvide").addEventListener("click", async () => {
+async function enviarCodigoRecuperacion(){
   const email = document.getElementById("olvideEmail").value.trim();
   const errorEl = document.getElementById("olvideError");
   errorEl.textContent = "";
-  document.getElementById("olvideOk").style.display = "none";
   if (!email){
     errorEl.textContent = "Introduce tu email.";
-    return;
+    return false;
   }
   const btn = document.getElementById("btnOlvide");
   btn.disabled = true;
   btn.textContent = "Enviando…";
-  // Deliberadamente no distinguimos aquí si el email existe o no en la respuesta: mostrar
-  // siempre el mismo mensaje evita que alguien pueda usar este formulario para averiguar
+  // Deliberadamente no distinguimos aquí si el email existe o no en la respuesta: pasar
+  // siempre a la misma pantalla evita que alguien pueda usar este formulario para averiguar
   // qué emails están dados de alta en la app.
-  await sb.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin + window.location.pathname
-  });
+  await sb.auth.resetPasswordForEmail(email);
   btn.disabled = false;
-  btn.textContent = "Enviar enlace";
-  document.getElementById("olvideOk").style.display = "block";
+  btn.textContent = "Enviar código";
+  emailEnRecuperacion = email;
+  return true;
+}
+
+document.getElementById("btnOlvide").addEventListener("click", async () => {
+  if (!(await enviarCodigoRecuperacion())) return;
+  document.getElementById("codigoRecuperacion").value = "";
+  document.getElementById("nuevaPassword1").value = "";
+  document.getElementById("nuevaPassword2").value = "";
+  document.getElementById("nuevaPasswordError").textContent = "";
+  ocultarTodasLasPantallas();
+  document.getElementById("codigoRecuperacionScreen").style.display = "block";
+});
+
+document.getElementById("reenviarCodigo").addEventListener("click", async e => {
+  e.preventDefault();
+  document.getElementById("olvideEmail").value = emailEnRecuperacion;
+  document.getElementById("olvideError").textContent = "";
+  ocultarTodasLasPantallas();
+  document.getElementById("olvideScreen").style.display = "block";
 });
 
 document.getElementById("btnGuardarNuevaPassword").addEventListener("click", async () => {
+  const codigo = document.getElementById("codigoRecuperacion").value.trim();
   const p1 = document.getElementById("nuevaPassword1").value;
   const p2 = document.getElementById("nuevaPassword2").value;
   const errorEl = document.getElementById("nuevaPasswordError");
   errorEl.textContent = "";
+
+  if (!/^\d{6}$/.test(codigo)){
+    errorEl.textContent = "El código debe tener 6 dígitos.";
+    return;
+  }
   if (p1.length < 6){
     errorEl.textContent = "La contraseña debe tener al menos 6 caracteres.";
     return;
@@ -512,17 +535,31 @@ document.getElementById("btnGuardarNuevaPassword").addEventListener("click", asy
     errorEl.textContent = "Las contraseñas no coinciden.";
     return;
   }
+
   const btn = document.getElementById("btnGuardarNuevaPassword");
   btn.disabled = true;
-  btn.textContent = "Guardando…";
-  const { error } = await sb.auth.updateUser({ password: p1 });
-  btn.disabled = false;
-  btn.textContent = "Guardar nueva contraseña";
-  if (error){
-    errorEl.textContent = "No se pudo actualizar la contraseña: " + error.message;
+  btn.textContent = "Comprobando…";
+
+  const { error: errorCodigo } = await sb.auth.verifyOtp({
+    email: emailEnRecuperacion,
+    token: codigo,
+    type: "recovery"
+  });
+  if (errorCodigo){
+    btn.disabled = false;
+    btn.textContent = "Restablecer contraseña";
+    errorEl.textContent = "Código incorrecto o caducado. Pide uno nuevo con \"Volver a enviarlo\".";
     return;
   }
-  enRecuperacion = false;
+
+  const { error: errorPassword } = await sb.auth.updateUser({ password: p1 });
+  btn.disabled = false;
+  btn.textContent = "Restablecer contraseña";
+  if (errorPassword){
+    errorEl.textContent = "No se pudo actualizar la contraseña: " + errorPassword.message;
+    return;
+  }
+
   setStatus("Contraseña actualizada correctamente.", "var(--success)");
   mostrarApp();
 });
@@ -535,44 +572,13 @@ document.getElementById("btnLogout").addEventListener("click", async () => {
   await sb.auth.signOut();
 });
 
-let enRecuperacion = false;
-
 sb.auth.onAuthStateChange((evento, session) => {
   sesionActual = session;
-  if (evento === "PASSWORD_RECOVERY"){
-    // El usuario ha pulsado el enlace de recuperación de contraseña del email: tiene una
-    // sesión temporal válida solo para establecer una contraseña nueva, no para entrar
-    // directo a la app.
-    enRecuperacion = true;
-    ocultarTodasLasPantallas();
-    document.getElementById("nuevaPasswordScreen").style.display = "block";
-    return;
-  }
-  if (enRecuperacion) return;
   if (session) mostrarApp(); else mostrarLogin();
 });
 
-// Supabase envía el enlace de recuperación con un "code" en la URL (formato PKCE) en vez
-// del token antiguo en el fragmento (#access_token=...). Hay que canjearlo explícitamente
-// para que se cree la sesión y se dispare el evento PASSWORD_RECOVERY de arriba.
-(function manejarEnlaceDeRecuperacion(){
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get("code");
-  if (!code) return;
-  sb.auth.exchangeCodeForSession(code).then(({ error }) => {
-    // Se limpia el "code" de la URL en cualquier caso, para no reintentar el canje si la
-    // página se recarga (un mismo código solo se puede usar una vez).
-    window.history.replaceState({}, document.title, window.location.pathname);
-    if (error){
-      mostrarLogin();
-      document.getElementById("loginError").textContent = "El enlace ha caducado o no es válido. Pide uno nuevo con \"¿Olvidaste tu contraseña?\".";
-    }
-  });
-})();
-
 sb.auth.getSession().then(({ data }) => {
   sesionActual = data.session;
-  if (enRecuperacion) return;
   if (data.session) mostrarApp(); else mostrarLogin();
 });
 
