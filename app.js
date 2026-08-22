@@ -523,8 +523,8 @@ document.getElementById("btnGuardarNuevaPassword").addEventListener("click", asy
   const errorEl = document.getElementById("nuevaPasswordError");
   errorEl.textContent = "";
 
-  if (!/^\d{6}$/.test(codigo)){
-    errorEl.textContent = "El código debe tener 6 dígitos.";
+  if (!/^\d{4,12}$/.test(codigo)){
+    errorEl.textContent = "El código solo debe contener números.";
     return;
   }
   if (p1.length < 6){
