@@ -68,6 +68,7 @@ async function cargarPerfilActual(){
   document.getElementById("btnAuditoria").style.display = esCoordinador() ? "inline-block" : "none";
   document.getElementById("btnEquipos").style.display = esCoordinador() ? "inline-block" : "none";
   document.getElementById("btnSolicitudes").style.display = esCoordinador() ? "inline-block" : "none";
+  document.getElementById("btnUsuarios").style.display = esCoordinador() ? "inline-block" : "none";
   if (esCoordinador()) actualizarContadorSolicitudes();
 }
 
@@ -95,7 +96,10 @@ const ACCION_ETIQUETA = {
   editar_portero: "Portero editado",
   editar_evaluacion: "Puntuaciones editadas",
   eliminar_evaluacion: "Evaluación eliminada",
-  fusionar_equipos: "Equipos fusionados"
+  fusionar_equipos: "Equipos fusionados",
+  aprobar_usuario: "Cuenta aprobada",
+  rechazar_usuario: "Solicitud rechazada",
+  actualizar_usuario: "Usuario actualizado"
 };
 
 async function abrirAuditoria(){
@@ -133,6 +137,11 @@ async function abrirAuditoria(){
         detalleTexto = (f.detalle.num_items || 0) + " ítem(s) puntuado(s)";
       } else if (f.accion === "fusionar_equipos" && f.detalle){
         detalleTexto = (f.detalle.origenes || []).join(", ") + " → " + (f.detalle.destino || "");
+      } else if ((f.accion === "aprobar_usuario" || f.accion === "rechazar_usuario") && f.detalle){
+        detalleTexto = f.detalle.nombre || "";
+      } else if (f.accion === "actualizar_usuario" && f.detalle){
+        const a = f.detalle.antes || {}, d = f.detalle.despues || {};
+        detalleTexto = (f.detalle.nombre || "") + ": " + (a.rol || "") + (a.activo === false ? " (inactivo)" : "") + " → " + (d.rol || "") + (d.activo === false ? " (inactivo)" : "");
       }
       return '<div class="resumen-item" style="align-items:flex-start;">' +
         '<span class="etiqueta">' + cuando + '<br><span style="color:var(--text-muted);font-size:11px;">' + (f.actor_nombre || "—") + '</span></span>' +
@@ -375,6 +384,98 @@ document.getElementById("cerrarSolicitudes").addEventListener("click", () => {
 });
 document.getElementById("modalSolicitudes").addEventListener("click", e => {
   if (e.target.id === "modalSolicitudes") document.getElementById("modalSolicitudes").style.display = "none";
+});
+
+// --- Gestión de usuarios ya aprobados: cambiar rol, activar/desactivar (solo coordinador) ---
+
+async function abrirUsuarios(){
+  const modal = document.getElementById("modalUsuarios");
+  const cont = document.getElementById("usuariosContenido");
+  cont.innerHTML = '<div class="empty">Cargando…</div>';
+  modal.style.display = "flex";
+
+  try {
+    const res = await fetch(
+      SUPABASE_URL + "/rest/v1/perfiles?select=id,nombre,rol,activo&aprobado=eq.true&order=nombre.asc",
+      { headers: sbHeaders() }
+    );
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const usuarios = await res.json();
+
+    if (usuarios.length === 0){
+      cont.innerHTML = '<div class="empty">No hay usuarios aprobados todavía.</div>';
+      return;
+    }
+
+    const miId = sesionActual ? sesionActual.user.id : null;
+
+    cont.innerHTML = usuarios.map(u => {
+      const esUnoMismo = u.id === miId;
+      return '<div class="resumen-item" style="flex-wrap:wrap;gap:8px;">' +
+        '<span class="etiqueta">' + (u.nombre || "—") + (esUnoMismo ? ' <span style="color:var(--text-muted);font-weight:400;">(tú)</span>' : '') +
+          (!u.activo ? ' <span style="color:var(--danger);font-weight:400;">· desactivado</span>' : '') +
+        '</span>' +
+        '<span style="display:flex;gap:6px;align-items:center;">' +
+          '<select data-rol-de="' + u.id + '" ' + (esUnoMismo ? 'disabled' : '') + ' style="font-size:12px;padding:6px;">' +
+            '<option value="tecnico" ' + (u.rol === "tecnico" ? "selected" : "") + '>Técnico</option>' +
+            '<option value="coordinador" ' + (u.rol === "coordinador" ? "selected" : "") + '>Coordinador</option>' +
+          '</select>' +
+          '<button class="btn-secondary" style="padding:6px 12px;font-size:12px;" data-toggle-activo="' + u.id + '" data-activo-actual="' + u.activo + '" ' + (esUnoMismo ? 'disabled' : '') + '>' +
+            (u.activo ? "Desactivar" : "Activar") +
+          '</button>' +
+        '</span>' +
+      '</div>';
+    }).join("") + '<div id="usuariosError" class="login-error"></div>';
+
+    cont.querySelectorAll("[data-rol-de]").forEach(sel => {
+      sel.addEventListener("change", () => actualizarUsuario(sel.dataset.rolDe, { rol: sel.value }));
+    });
+    cont.querySelectorAll("[data-toggle-activo]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const activoActual = btn.dataset.activoActual === "true";
+        const nombre = btn.closest(".resumen-item").querySelector(".etiqueta").textContent.trim();
+        if (activoActual && !confirm('¿Desactivar a "' + nombre + '"? No podrá usar la app hasta que lo reactives.')) return;
+        actualizarUsuario(btn.dataset.toggleActivo, { activo: !activoActual });
+      });
+    });
+  } catch(e){
+    cont.innerHTML = '<div class="empty" style="color:var(--danger);">No se pudieron cargar los usuarios. Comprueba tu conexión.</div>';
+    reportarError(e, { contexto: "abrirUsuarios" });
+  }
+}
+
+async function actualizarUsuario(usuarioId, cambios){
+  const errorEl = document.getElementById("usuariosError");
+  try {
+    const token = await obtenerAccessToken();
+    const res = await fetch(SUPABASE_URL + "/functions/v1/actualizar-usuario", {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(Object.assign({ usuario_id: usuarioId }, cambios))
+    });
+    if (!res.ok){
+      let mensaje = "HTTP " + res.status;
+      try { const cuerpo = await res.json(); if (cuerpo.error) mensaje = cuerpo.error; } catch(e){}
+      throw new Error(mensaje);
+    }
+    setStatus("Usuario actualizado.", "var(--success)");
+    abrirUsuarios();
+  } catch(e){
+    if (errorEl) errorEl.textContent = "No se pudo actualizar: " + e.message;
+    reportarError(e, { contexto: "actualizarUsuario", usuario_id: usuarioId, cambios });
+  }
+}
+
+document.getElementById("btnUsuarios").addEventListener("click", abrirUsuarios);
+document.getElementById("cerrarUsuarios").addEventListener("click", () => {
+  document.getElementById("modalUsuarios").style.display = "none";
+});
+document.getElementById("modalUsuarios").addEventListener("click", e => {
+  if (e.target.id === "modalUsuarios") document.getElementById("modalUsuarios").style.display = "none";
 });
 
 async function obtenerAccessToken(){
@@ -931,8 +1032,9 @@ async function abrirDetalleEvaluacion(ev){
     '</div>';
 
   const historialHtml = construirHistorialEquipos(ev);
+  const evolucionHtml = construirEvolucionPortero(ev);
 
-  cont.innerHTML = accionesHtml + '<div id="editarPorteroForm"></div><div id="editarItemsForm"></div>' + cabeceraHtml + historialHtml + '<div id="detalleItemsContenido"><div class="empty" style="padding-top:14px;">Cargando ítems…</div></div>';
+  cont.innerHTML = accionesHtml + '<div id="editarPorteroForm"></div><div id="editarItemsForm"></div>' + cabeceraHtml + historialHtml + evolucionHtml + '<div id="detalleItemsContenido"><div class="empty" style="padding-top:14px;">Cargando ítems…</div></div>';
   modal.style.display = "flex";
   enlazarAccionesDetalle(ev);
 
@@ -1002,6 +1104,42 @@ function construirHistorialEquipos(ev){
     return '<div class="resumen-item"><span class="etiqueta">' + f.equipo + '</span><span class="valor" style="font-weight:400;color:var(--text-muted);">' + rango + '</span></div>';
   }).join("");
   return html;
+}
+
+function construirEvolucionPortero(ev){
+  if (!ev.portero_id) return "";
+  const delMismoPortero = evaluacionesCargadas
+    .filter(e => e.portero_id === ev.portero_id)
+    .slice()
+    .sort((a, b) => {
+      const fa = a.fecha_partido || (a.created_at ? a.created_at.slice(0,10) : "");
+      const fb = b.fecha_partido || (b.created_at ? b.created_at.slice(0,10) : "");
+      return fa.localeCompare(fb);
+    });
+
+  if (delMismoPortero.length <= 1) return ""; // no hay "evolución" con una sola evaluación
+
+  const filas = delMismoPortero.map(e => {
+    const fecha = e.fecha_partido || (e.created_at ? e.created_at.slice(0,10) : "—");
+    const celda = v => (v === null || v === undefined) ? "N/D" : fmt(v);
+    return '<tr>' +
+      '<td>' + fecha + '</td>' +
+      '<td>' + (nombreEquipoDe(e) || "—") + '</td>' +
+      '<td>' + celda(e.media_ofensivo_tecnico) + '</td>' +
+      '<td>' + celda(e.media_defensivo_tactico) + '</td>' +
+      '<td>' + celda(e.media_fisico_condicional) + '</td>' +
+      '<td>' + celda(e.media_psicologico) + '</td>' +
+      '<td>' + (e.evaluacion_final || "N/D") + '</td>' +
+    '</tr>';
+  }).join("");
+
+  return '<div class="detalle-cat-title">Evolución de ' + delMismoPortero.length + ' evaluaciones</div>' +
+    '<div style="overflow-x:auto;">' +
+    '<table class="tabla-evolucion">' +
+      '<thead><tr><th>Fecha</th><th>Equipo</th><th>Of/Téc</th><th>Def/Táct</th><th>Fís/Cond</th><th>Psic</th><th>Eval</th></tr></thead>' +
+      '<tbody>' + filas + '</tbody>' +
+    '</table>' +
+    '</div>';
 }
 
 function enlazarAccionesDetalle(ev){

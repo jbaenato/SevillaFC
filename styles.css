@@ -337,6 +337,24 @@
     color: var(--accent);
   }
   .detalle-cat-title:first-of-type { margin-top: 18px; }
+  .tabla-evolucion {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  .tabla-evolucion th, .tabla-evolucion td {
+    padding: 6px 8px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border);
+  }
+  .tabla-evolucion th {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+  }
   .detalle-acciones {
     display: flex;
     gap: 8px;
