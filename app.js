@@ -291,12 +291,18 @@ async function abrirSolicitudes(){
     cont.innerHTML = pendientes.map(p =>
       '<div class="resumen-item">' +
         '<span class="etiqueta">' + (p.nombre || "—") + '</span>' +
-        '<button class="btn-primary" style="padding:6px 14px;font-size:12px;" data-aprobar="' + p.id + '">Aprobar</button>' +
+        '<span style="display:flex;gap:6px;">' +
+          '<button class="btn-primary" style="padding:6px 14px;font-size:12px;" data-aprobar="' + p.id + '">Aprobar</button>' +
+          '<button class="btn-secondary" style="padding:6px 14px;font-size:12px;color:var(--danger);" data-rechazar="' + p.id + '" data-nombre="' + (p.nombre || "").replace(/"/g, "&quot;") + '">Rechazar</button>' +
+        '</span>' +
       '</div>'
     ).join("") + '<div id="solicitudesError" class="login-error"></div>';
 
     cont.querySelectorAll("[data-aprobar]").forEach(btn => {
       btn.addEventListener("click", () => aprobarSolicitud(btn.dataset.aprobar));
+    });
+    cont.querySelectorAll("[data-rechazar]").forEach(btn => {
+      btn.addEventListener("click", () => confirmarRechazarSolicitud(btn.dataset.rechazar, btn.dataset.nombre));
     });
   } catch(e){
     cont.innerHTML = '<div class="empty" style="color:var(--danger);">No se pudieron cargar las solicitudes. Comprueba tu conexión.</div>';
@@ -328,6 +334,38 @@ async function aprobarSolicitud(usuarioId){
   } catch(e){
     if (errorEl) errorEl.textContent = "No se pudo aprobar: " + e.message;
     reportarError(e, { contexto: "aprobarSolicitud", usuario_id: usuarioId });
+  }
+}
+
+function confirmarRechazarSolicitud(usuarioId, nombre){
+  if (!confirm('¿Rechazar y eliminar la cuenta de "' + (nombre || "este usuario") + '"? Tendría que registrarse de nuevo si quisiera volver a solicitar acceso.')) return;
+  rechazarSolicitud(usuarioId);
+}
+
+async function rechazarSolicitud(usuarioId){
+  const errorEl = document.getElementById("solicitudesError");
+  try {
+    const token = await obtenerAccessToken();
+    const res = await fetch(SUPABASE_URL + "/functions/v1/rechazar-usuario", {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ usuario_id: usuarioId })
+    });
+    if (!res.ok){
+      let mensaje = "HTTP " + res.status;
+      try { const cuerpo = await res.json(); if (cuerpo.error) mensaje = cuerpo.error; } catch(e){}
+      throw new Error(mensaje);
+    }
+    setStatus("Solicitud rechazada.", "var(--success)");
+    abrirSolicitudes();
+    actualizarContadorSolicitudes();
+  } catch(e){
+    if (errorEl) errorEl.textContent = "No se pudo rechazar: " + e.message;
+    reportarError(e, { contexto: "rechazarSolicitud", usuario_id: usuarioId });
   }
 }
 
