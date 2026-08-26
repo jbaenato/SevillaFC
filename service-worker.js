@@ -1,4 +1,4 @@
-const CACHE_NAME = "porteros-cache-v24";
+const CACHE_NAME = "porteros-cache-v25";
 const FILES_TO_CACHE = [
   "./index.html",
   "./app.js",
@@ -8,6 +8,12 @@ const FILES_TO_CACHE = [
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];
+
+// Solo la carcasa pública de la aplicación puede almacenarse en caché. Las respuestas
+// de Supabase contienen información privada y nunca deben guardarse en Cache Storage.
+const CACHEABLE_URLS = new Set(
+  FILES_TO_CACHE.map((path) => new URL(path, self.location.href).href)
+);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -32,19 +38,26 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // Solo se cachean peticiones GET (login y guardado son POST y nunca deben servirse
-  // desde caché ni intentar guardarse en ella; la API de Cache además no admite POST).
   if (event.request.method !== "GET") return;
+
+  const requestUrl = new URL(event.request.url);
+  const esNavegacion = event.request.mode === "navigate";
+  const esRecursoCacheable = CACHEABLE_URLS.has(requestUrl.href);
+
+  // No interceptamos APIs, CDNs ni otros recursos que puedan contener datos privados.
+  if (requestUrl.origin !== self.location.origin || (!esNavegacion && !esRecursoCacheable)) return;
 
   event.respondWith(
     fetch(event.request)
       .then((res) => {
-        const copia = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copia));
+        if (res.ok && esRecursoCacheable) {
+          const copia = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copia));
+        }
         return res;
       })
       .catch(() =>
-        caches.match(event.request).then((cacheada) =>
+        caches.match(esNavegacion ? "./index.html" : event.request).then((cacheada) =>
           cacheada || new Response("Sin conexión y sin copia guardada de este recurso.", {
             status: 503,
             statusText: "Sin conexión",
