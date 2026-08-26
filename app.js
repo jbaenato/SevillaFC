@@ -73,6 +73,31 @@ function borrarPerfilOffline(){
   try { localStorage.removeItem(PERFIL_OFFLINE_KEY); } catch(e){}
 }
 
+function idUsuarioActual(){
+  if (sesionActual && sesionActual.user) return sesionActual.user.id;
+  return perfilActual && perfilActual.userId ? perfilActual.userId : null;
+}
+
+function clavePorUsuario(base){
+  const userId = idUsuarioActual();
+  return userId ? base + "_" + userId : base;
+}
+
+function migrarAlmacenamientoOfflineLegacy(){
+  const userId = idUsuarioActual();
+  if (!userId) return;
+  [BORRADOR_KEY, PENDIENTES_KEY].forEach(base => {
+    try {
+      const claveNueva = clavePorUsuario(base);
+      const legacy = localStorage.getItem(base);
+      if (legacy !== null && localStorage.getItem(claveNueva) === null){
+        localStorage.setItem(claveNueva, legacy);
+        localStorage.removeItem(base);
+      }
+    } catch(e){}
+  });
+}
+
 async function cargarPerfilActual(){
   try {
     const res = await fetch(
@@ -540,6 +565,7 @@ function abrirAppConPerfilValidado(){
 
   const nombreTecnico = perfilActual.nombre || (sesionActual ? sesionActual.user.email : "");
   document.getElementById("evaluador").value = nombreTecnico;
+  migrarAlmacenamientoOfflineLegacy();
   ocultarTodasLasPantallas();
   document.getElementById("appContainer").style.display = "block";
   if (!appIniciada){
@@ -1784,15 +1810,15 @@ function guardarBorrador(){
   try {
     const estado = recopilarEstadoFormulario();
     if (!estado || estadoFormularioVacio(estado)){
-      localStorage.removeItem(BORRADOR_KEY);
+      localStorage.removeItem(clavePorUsuario(BORRADOR_KEY));
       return;
     }
-    localStorage.setItem(BORRADOR_KEY, JSON.stringify(estado));
+    localStorage.setItem(clavePorUsuario(BORRADOR_KEY), JSON.stringify(estado));
   } catch(e){ /* localStorage no disponible: sin borrador, sin bloquear la app */ }
 }
 
 function borrarBorrador(){
-  try { localStorage.removeItem(BORRADOR_KEY); } catch(e){}
+  try { localStorage.removeItem(clavePorUsuario(BORRADOR_KEY)); } catch(e){}
 }
 
 function aplicarCamposBorrador(borrador){
@@ -1823,7 +1849,7 @@ function aplicarCamposBorrador(borrador){
 function intentarRestaurarBorrador(){
   let borrador = null;
   try {
-    const guardado = localStorage.getItem(BORRADOR_KEY);
+    const guardado = localStorage.getItem(clavePorUsuario(BORRADOR_KEY));
     if (guardado) borrador = JSON.parse(guardado);
   } catch(e){ borrador = null; }
   if (!borrador) return;
@@ -1869,13 +1895,13 @@ function intentarRestaurarBorrador(){
 
 function obtenerColaPendientes(){
   try {
-    const guardado = localStorage.getItem(PENDIENTES_KEY);
+    const guardado = localStorage.getItem(clavePorUsuario(PENDIENTES_KEY));
     return guardado ? JSON.parse(guardado) : [];
   } catch(e){ return []; }
 }
 
 function guardarColaPendientes(cola){
-  try { localStorage.setItem(PENDIENTES_KEY, JSON.stringify(cola)); } catch(e){}
+  try { localStorage.setItem(clavePorUsuario(PENDIENTES_KEY), JSON.stringify(cola)); } catch(e){}
 }
 
 function guardarPendienteOffline(p){
