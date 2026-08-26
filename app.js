@@ -800,6 +800,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && appIniciada){
     sb.auth.getSession().then(({ data }) => {
       sesionActual = data.session;
+      if (data.session && navigator.onLine) sincronizarPendientes();
     });
   }
 });
