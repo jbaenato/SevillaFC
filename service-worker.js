@@ -6,7 +6,8 @@ const FILES_TO_CACHE = [
   "./vendor/sentry-bundle.min.js",
   "./manifest.json",
   "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon-512.png",
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js"
 ];
 
 // Solo la carcasa pública de la aplicación puede almacenarse en caché. Las respuestas
@@ -44,8 +45,8 @@ self.addEventListener("fetch", (event) => {
   const esNavegacion = event.request.mode === "navigate";
   const esRecursoCacheable = CACHEABLE_URLS.has(requestUrl.href);
 
-  // No interceptamos APIs, CDNs ni otros recursos que puedan contener datos privados.
-  if (requestUrl.origin !== self.location.origin || (!esNavegacion && !esRecursoCacheable)) return;
+  // No interceptamos APIs ni ningún recurso que no esté en la lista pública permitida.
+  if (!esNavegacion && !esRecursoCacheable) return;
 
   event.respondWith(
     fetch(event.request)
