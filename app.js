@@ -47,12 +47,12 @@ let tecnicosDisponibles = [];
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let sesionActual = null;
 let appIniciada = false;
-let perfilActual = null; // { nombre, rol } del técnico con sesión iniciada
+let perfilActual = null; // { nombre, rol, aprobado, activo } del técnico con sesión iniciada
 
 async function cargarPerfilActual(){
   try {
     const res = await fetch(
-      SUPABASE_URL + "/rest/v1/perfiles?select=nombre,rol,aprobado",
+      SUPABASE_URL + "/rest/v1/perfiles?select=nombre,rol,aprobado,activo",
       { headers: sbHeaders() }
     );
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -243,7 +243,7 @@ async function confirmarFusionEquipos(seleccionados){
 
   try {
     const token = await obtenerAccessToken();
-    const res = await fetch(SUPABASE_URL + "/functions/v1/fusionar-equipos", {
+    const res = await fetch(SUPABASE_URL + "/functions/v1/fusionar_equipos", {
       method: "POST",
       headers: {
         "apikey": SUPABASE_KEY,
@@ -510,7 +510,7 @@ function mostrarPendienteAprobacion(){
 async function mostrarApp(){
   await cargarPerfilActual();
 
-  if (!perfilActual || !perfilActual.aprobado){
+  if (!perfilActual || !perfilActual.aprobado || !perfilActual.activo){
     mostrarPendienteAprobacion();
     return;
   }
@@ -1300,7 +1300,7 @@ async function guardarEdicionItems(ev){
 
   try {
     const token = await obtenerAccessToken();
-    const res = await fetch(SUPABASE_URL + "/functions/v1/editar-evaluacion", {
+    const res = await fetch(SUPABASE_URL + "/functions/v1/editar_evaluacion", {
       method: "POST",
       headers: {
         "apikey": SUPABASE_KEY,
