@@ -24,6 +24,8 @@ function reportarError(error, contexto){
 }
 const BORRADOR_KEY = "porteros_borrador_v1";
 const PENDIENTES_KEY = "porteros_pendientes_sync_v1";
+const PERFIL_OFFLINE_KEY = "porteros_perfil_offline_v1";
+const CATALOGO_OFFLINE_KEY = "porteros_catalogo_offline_v1";
 
 // Orden fijo de categorías y su columna de media correspondiente (igual para cualquier modalidad)
 const CATEGORY_ORDER = ["Ofensivo / técnico", "Defensivo / táctico", "Físico / condicional", "Psicológico"];
@@ -49,6 +51,28 @@ let sesionActual = null;
 let appIniciada = false;
 let perfilActual = null; // { nombre, rol, aprobado, activo } del técnico con sesión iniciada
 
+function obtenerPerfilOffline(){
+  try {
+    const perfil = JSON.parse(localStorage.getItem(PERFIL_OFFLINE_KEY) || "null");
+    if (!perfil || !perfil.aprobado || !perfil.activo) return null;
+    if (sesionActual && perfil.userId !== sesionActual.user.id) return null;
+    return perfil;
+  } catch(e){ return null; }
+}
+
+function guardarPerfilOffline(perfil){
+  try {
+    localStorage.setItem(PERFIL_OFFLINE_KEY, JSON.stringify(Object.assign({}, perfil, {
+      userId: sesionActual ? sesionActual.user.id : null,
+      actualizadoEn: new Date().toISOString()
+    })));
+  } catch(e){}
+}
+
+function borrarPerfilOffline(){
+  try { localStorage.removeItem(PERFIL_OFFLINE_KEY); } catch(e){}
+}
+
 async function cargarPerfilActual(){
   try {
     const res = await fetch(
@@ -58,8 +82,9 @@ async function cargarPerfilActual(){
     if (!res.ok) throw new Error("HTTP " + res.status);
     const filas = await res.json();
     perfilActual = filas[0] || null;
+    if (perfilActual && perfilActual.aprobado && perfilActual.activo) guardarPerfilOffline(perfilActual);
   } catch(e){
-    perfilActual = null;
+    perfilActual = !navigator.onLine ? obtenerPerfilOffline() : null;
   }
 
   const nombreTecnico = (perfilActual && perfilActual.nombre) ? perfilActual.nombre : (sesionActual ? sesionActual.user.email : "");
@@ -507,20 +532,35 @@ function mostrarPendienteAprobacion(){
   document.getElementById("pendienteAprobacionScreen").style.display = "block";
 }
 
-async function mostrarApp(){
-  await cargarPerfilActual();
-
+function abrirAppConPerfilValidado(){
   if (!perfilActual || !perfilActual.aprobado || !perfilActual.activo){
     mostrarPendienteAprobacion();
     return;
   }
 
+  const nombreTecnico = perfilActual.nombre || (sesionActual ? sesionActual.user.email : "");
+  document.getElementById("evaluador").value = nombreTecnico;
   ocultarTodasLasPantallas();
   document.getElementById("appContainer").style.display = "block";
   if (!appIniciada){
     appIniciada = true;
     iniciarApp();
   }
+}
+
+async function mostrarApp(){
+  await cargarPerfilActual();
+  abrirAppConPerfilValidado();
+}
+
+function mostrarAppOffline(){
+  perfilActual = obtenerPerfilOffline();
+  if (!perfilActual){
+    mostrarLogin();
+    return;
+  }
+  abrirAppConPerfilValidado();
+  setStatus("Modo sin conexión: las evaluaciones se guardarán en este dispositivo.", "var(--accent)");
 }
 
 document.getElementById("btnLogin").addEventListener("click", async () => {
@@ -704,21 +744,27 @@ document.getElementById("btnGuardarNuevaPassword").addEventListener("click", asy
 });
 
 document.getElementById("btnSalirPendiente").addEventListener("click", async () => {
+  borrarPerfilOffline();
   await sb.auth.signOut();
 });
 
 document.getElementById("btnLogout").addEventListener("click", async () => {
+  borrarPerfilOffline();
   await sb.auth.signOut();
 });
 
 sb.auth.onAuthStateChange((evento, session) => {
   sesionActual = session;
-  if (session) mostrarApp(); else mostrarLogin();
+  if (session) mostrarApp();
+  else if (evento !== "SIGNED_OUT" && !navigator.onLine && obtenerPerfilOffline()) mostrarAppOffline();
+  else mostrarLogin();
 });
 
 sb.auth.getSession().then(({ data }) => {
   sesionActual = data.session;
-  if (data.session) mostrarApp(); else mostrarLogin();
+  if (data.session) mostrarApp();
+  else if (!navigator.onLine && obtenerPerfilOffline()) mostrarAppOffline();
+  else mostrarLogin();
 });
 
 // En móvil, si la app pasa un rato en segundo plano (cambio de app, pantalla bloqueada...),
@@ -794,28 +840,66 @@ async function cargarListaTecnicos(){
   } catch(e) { /* silencioso: el autocompletado es un extra, no crítico */ }
 }
 
+function obtenerCatalogoOffline(){
+  try {
+    const catalogo = JSON.parse(localStorage.getItem(CATALOGO_OFFLINE_KEY) || "null");
+    return catalogo && Array.isArray(catalogo.modalidades) && catalogo.itemsPorModalidad
+      ? catalogo
+      : { modalidades: [], itemsPorModalidad: {} };
+  } catch(e){ return { modalidades: [], itemsPorModalidad: {} }; }
+}
+
+function guardarCatalogoOffline(catalogo){
+  try {
+    catalogo.actualizadoEn = new Date().toISOString();
+    localStorage.setItem(CATALOGO_OFFLINE_KEY, JSON.stringify(catalogo));
+  } catch(e){}
+}
+
+async function precargarItemsOffline(modalidades){
+  const catalogo = obtenerCatalogoOffline();
+  catalogo.modalidades = modalidades;
+  await Promise.all(modalidades.map(async (modalidad) => {
+    try {
+      const res = await fetch(
+        SUPABASE_URL + "/rest/v1/items_evaluacion?select=id,categoria,nombre,orden&modalidad_id=eq." + encodeURIComponent(modalidad.id) + "&order=orden.asc",
+        { headers: sbHeaders() }
+      );
+      if (res.ok) catalogo.itemsPorModalidad[modalidad.id] = await res.json();
+    } catch(e){}
+  }));
+  guardarCatalogoOffline(catalogo);
+}
+
 async function cargarModalidades(){
   const cont = document.getElementById("modalidadGroup");
+  let modalidades = [];
   try {
     const res = await fetch(SUPABASE_URL + "/rest/v1/modalidades?select=id,nombre&order=nombre.asc", { headers: sbHeaders() });
     if (!res.ok) throw new Error("HTTP " + res.status);
-    const modalidades = await res.json();
+    modalidades = await res.json();
+    await precargarItemsOffline(modalidades);
+  } catch(e){
+    modalidades = obtenerCatalogoOffline().modalidades;
     if (modalidades.length === 0){
-      cont.innerHTML = '<span class="empty" style="padding:0;">No hay modalidades configuradas todavía.</span>';
+      cont.innerHTML = '<span class="empty" style="padding:0; color:var(--danger);">Para usar la app sin conexión, ábrela primero una vez con conexión.</span>';
+      reportarError(e, { contexto: "cargarModalidades" });
       return;
     }
-    cont.innerHTML = modalidades.map(m =>
-      '<label class="radio-option"><input type="radio" name="modalidad" value="' + m.id + '" data-nombre="' + m.nombre + '"> ' + m.nombre + '</label>'
-    ).join("");
-    cont.querySelectorAll('input[name="modalidad"]').forEach(r => {
-      r.addEventListener("change", e => {
-        seleccionarModalidad(e.target.value, e.target.dataset.nombre);
-      });
-    });
-  } catch(e){
-    cont.innerHTML = '<span class="empty" style="padding:0; color:var(--danger);">No se pudieron cargar las modalidades. Comprueba tu conexión.</span>';
-    reportarError(e, { contexto: "cargarModalidades" });
   }
+
+  if (modalidades.length === 0){
+    cont.innerHTML = '<span class="empty" style="padding:0;">No hay modalidades configuradas todavía.</span>';
+    return;
+  }
+  cont.innerHTML = modalidades.map(m =>
+    '<label class="radio-option"><input type="radio" name="modalidad" value="' + m.id + '" data-nombre="' + m.nombre + '"> ' + m.nombre + '</label>'
+  ).join("");
+  cont.querySelectorAll('input[name="modalidad"]').forEach(r => {
+    r.addEventListener("change", e => {
+      seleccionarModalidad(e.target.value, e.target.dataset.nombre);
+    });
+  });
 }
 
 async function seleccionarModalidad(id, nombre){
@@ -825,33 +909,41 @@ async function seleccionarModalidad(id, nombre){
   document.getElementById("form").innerHTML = '<div class="empty">Cargando ítems de ' + nombre + '…</div>';
   document.getElementById("form").style.display = "block";
 
+  let items = [];
   try {
     const res = await fetch(
       SUPABASE_URL + "/rest/v1/items_evaluacion?select=id,categoria,nombre,orden&modalidad_id=eq." + encodeURIComponent(id) + "&order=orden.asc",
       { headers: sbHeaders() }
     );
     if (!res.ok) throw new Error("HTTP " + res.status);
-    const items = await res.json();
-
-    const porCategoria = {};
-    items.forEach(it => {
-      if (!porCategoria[it.categoria]) porCategoria[it.categoria] = [];
-      porCategoria[it.categoria].push({ id: it.id, nombre: it.nombre });
-    });
-
-    DATA = CATEGORY_ORDER
-      .filter(cat => porCategoria[cat])
-      .map(cat => ({ cat: cat, col: CATEGORY_COL[cat], items: porCategoria[cat] }));
-
-    valores = {};
-    DATA.forEach(s => s.items.forEach(it => { valores[it.id] = { nd: true, val: 2.5 }; }));
-
-    resto.style.display = "block";
-    renderForm();
+    items = await res.json();
+    const catalogo = obtenerCatalogoOffline();
+    catalogo.itemsPorModalidad[id] = items;
+    guardarCatalogoOffline(catalogo);
   } catch(e){
-    document.getElementById("form").innerHTML = '<div class="empty" style="color:var(--danger);">No se pudo cargar el formulario de ' + nombre + '. Comprueba tu conexión.</div>';
-    reportarError(e, { contexto: "seleccionarModalidad", modalidad: nombre });
+    items = obtenerCatalogoOffline().itemsPorModalidad[id] || [];
+    if (items.length === 0){
+      document.getElementById("form").innerHTML = '<div class="empty" style="color:var(--danger);">Este formulario todavía no está disponible sin conexión. Abre la app una vez con conexión.</div>';
+      reportarError(e, { contexto: "seleccionarModalidad", modalidad: nombre });
+      return;
+    }
   }
+
+  const porCategoria = {};
+  items.forEach(it => {
+    if (!porCategoria[it.categoria]) porCategoria[it.categoria] = [];
+    porCategoria[it.categoria].push({ id: it.id, nombre: it.nombre });
+  });
+
+  DATA = CATEGORY_ORDER
+    .filter(cat => porCategoria[cat])
+    .map(cat => ({ cat: cat, col: CATEGORY_COL[cat], items: porCategoria[cat] }));
+
+  valores = {};
+  DATA.forEach(s => s.items.forEach(it => { valores[it.id] = { nd: true, val: 2.5 }; }));
+
+  resto.style.display = "block";
+  renderForm();
 }
 
 // Extrae el nombre del portero embebido en la respuesta de Supabase (select=*,porteros(nombre))
