@@ -10,12 +10,19 @@
     if (global.crypto && typeof global.crypto.randomUUID === "function") {
       return global.crypto.randomUUID();
     }
-    return "offline-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+    // UUID v4 compatible para navegadores antiguos. La clave se envía también al
+    // servidor, por lo que debe mantener un formato UUID incluso sin randomUUID().
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+      const r = Math.floor(Math.random() * 16);
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
   }
 
   function normalizarEntrada(item, ahora) {
     const entrada = Object.assign({}, item || {});
     if (!entrada.idLocal) entrada.idLocal = crearIdLocal();
+    if (!entrada.solicitudId) entrada.solicitudId = crearIdLocal();
     if (!entrada.guardadoEn) entrada.guardadoEn = (ahora || new Date()).toISOString();
     if (![ESTADO_PENDIENTE, ESTADO_SESION, ESTADO_ERROR].includes(entrada.estadoSync)) {
       entrada.estadoSync = ESTADO_PENDIENTE;
@@ -103,6 +110,7 @@
     ESTADO_PENDIENTE,
     ESTADO_SESION,
     ESTADO_ERROR,
+    crearIdLocal,
     normalizarEntrada,
     leer,
     guardar,
@@ -1628,6 +1636,12 @@ function setStatus(msg, color){
 }
 
 let pendienteGuardar = null;
+let solicitudActualId = null;
+
+function obtenerSolicitudActualId(){
+  if (!solicitudActualId) solicitudActualId = OfflineQueue.crearIdLocal();
+  return solicitudActualId;
+}
 
 document.getElementById("guardar").addEventListener("click", () => {
   if (!modalidadSeleccionada){
@@ -1727,7 +1741,21 @@ document.getElementById("guardar").addEventListener("click", () => {
     if (!v.nd) respuestas.push({ item_id: it.id, valor: v.val });
   }));
 
-  pendienteGuardar = { row, respuestas, evaluador, nombre, equipo, anioNacimiento, lateralidad };
+  pendienteGuardar = {
+    row,
+    respuestas,
+    evaluador,
+    nombre,
+    equipo,
+    anioNacimiento,
+    lateralidad,
+    solicitudId: obtenerSolicitudActualId()
+  };
+
+  // La clave queda persistida antes del primer envío. Si Supabase guarda la evaluación
+  // pero el navegador se cierra antes de recibir la respuesta, el borrador recuperado
+  // reutilizará la misma clave y el servidor reconocerá el reintento.
+  guardarBorrador();
 
   mostrarRepaso();
 });
@@ -1809,6 +1837,7 @@ document.getElementById("volverEditar").addEventListener("click", () => {
 // en las tablas (las políticas RLS solo permiten lectura a usuarios autenticados).
 // Se usa tanto al guardar en el momento como al sincronizar evaluaciones pendientes offline.
 async function guardarEnSupabase(p){
+  if (!p.solicitudId) p.solicitudId = OfflineQueue.crearIdLocal();
   const token = await obtenerAccessToken();
   if (!token) {
     const errorSesion = new Error("Sesión no válida. Vuelve a iniciar sesión.");
@@ -1827,6 +1856,7 @@ async function guardarEnSupabase(p){
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
+        solicitud_id: p.solicitudId,
         nombre: p.nombre,
         lateralidad: p.lateralidad,
         anioNacimiento: p.anioNacimiento,
@@ -1916,6 +1946,7 @@ function resetForm(){
   document.getElementById("observaciones").value = "";
   document.querySelectorAll('input[name="evalFinal"]').forEach(r => { r.checked = false; });
   DATA.forEach(s => s.items.forEach(it => { valores[it.id] = { nd: true, val: 2.5 }; }));
+  solicitudActualId = null;
   renderForm();
   borrarBorrador();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1927,6 +1958,7 @@ function recopilarEstadoFormulario(){
   if (!modalidadSeleccionada || document.getElementById("restoFormulario").style.display === "none") return null;
   const evalFinalEl = document.querySelector('input[name="evalFinal"]:checked');
   return {
+    solicitudId: obtenerSolicitudActualId(),
     modalidadId: modalidadSeleccionada.id,
     modalidadNombre: modalidadSeleccionada.nombre,
     evaluador: document.getElementById("evaluador").value,
@@ -1968,6 +2000,7 @@ function borrarBorrador(){
 
 function aplicarCamposBorrador(borrador){
   // El técnico no se restaura desde el borrador: siempre es el de la sesión activa.
+  solicitudActualId = borrador.solicitudId || OfflineQueue.crearIdLocal();
   document.getElementById("nombre").value = borrador.nombre || "";
   document.getElementById("equipo").value = borrador.equipo || "";
   const lat = document.querySelector('input[name="lateralidad"][value="' + borrador.lateralidad + '"]');
@@ -2103,6 +2136,19 @@ async function sincronizarPendientes(opciones){
   if (sincronizandoPendientes) return;
   let cola = obtenerColaPendientes();
   if (errorLecturaColaOffline || cola.length === 0) return;
+
+  // Persiste las claves que se hayan añadido al normalizar entradas antiguas antes de
+  // realizar ninguna petición. Así un cierre durante el envío tampoco cambia la clave.
+  try {
+    cola.forEach(item => {
+      if (!item.solicitudId) item.solicitudId = OfflineQueue.crearIdLocal();
+    });
+    guardarColaPendientes(cola);
+  } catch(e){
+    reportarError(e, { contexto: "persistir-claves-idempotencia" });
+    setStatus("No se pudo preparar la cola guardada. No borres los datos de la aplicación.", "var(--danger)");
+    return;
+  }
 
   const opts = opciones && typeof opciones === "object" && !opciones.type ? opciones : {};
   const preparada = OfflineQueue.prepararReintento(cola, {

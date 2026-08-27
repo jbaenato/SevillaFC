@@ -7,7 +7,7 @@
 // sesión válida (Supabase ya exige un JWT válido antes de dejar entrar la petición aquí,
 // salvo que la función se despliegue con --no-verify-jwt, que no es el caso).
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.4";
 
 // Misma clave pública ("publishable"/"anon") que ya usa el frontend — solo sirve para
 // validar el token de sesión contra el servidor de Auth, nunca para leer/escribir datos.
@@ -58,10 +58,19 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Cuerpo de la petición no es JSON válido." }, 400);
   }
 
-  const { nombre, lateralidad, anioNacimiento, equipo, row, respuestas } = body;
+  const { solicitud_id, nombre, lateralidad, anioNacimiento, equipo, row, respuestas } = body;
 
   if (!nombre || !equipo || !row || typeof row !== "object" || !Array.isArray(respuestas)) {
     return jsonResponse({ error: "Faltan datos obligatorios (nombre, equipo, row, respuestas)." }, 400);
+  }
+
+  // Las versiones anteriores de la app no enviaban esta clave. Generarla en el servidor
+  // mantiene la compatibilidad durante el despliegue; las versiones nuevas reutilizan
+  // siempre la misma UUID en todos los reintentos.
+  const solicitudId = solicitud_id || crypto.randomUUID();
+  const UUID_VALIDO = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (typeof solicitudId !== "string" || !UUID_VALIDO.test(solicitudId)) {
+    return jsonResponse({ error: "El identificador de la evaluación no es válido." }, 400);
   }
 
   // --- Validación de datos (nunca nos fiamos de lo que calcule/valide el cliente) ---
@@ -126,137 +135,32 @@ Deno.serve(async (req) => {
   if (!evaluador) return jsonResponse({ error: "Tu perfil no tiene nombre de técnico configurado." }, 400);
 
   try {
-    const tecnicoId = await getOrCreateTecnicoId(supabase, evaluador);
-    const porteroId = await getOrCreatePorteroId(supabase, nombre, lateralidad, anioNacimiento);
-    const equipoId = await getOrCreateEquipoId(supabase, equipo);
-
-    const filaEvaluacion = {
-      ...row,
-      tecnico_id: tecnicoId,
-      portero_id: porteroId,
-      equipo_id: equipoId,
-    };
-
-    const { data: evaluacionCreada, error: errEvaluacion } = await supabase
-      .from("evaluaciones")
-      .insert(filaEvaluacion)
-      .select("id")
+    // Una función Postgres realiza todo el guardado dentro de una única transacción. La
+    // service_role es la única autorizada a ejecutarla; el navegador nunca puede llamar
+    // directamente a esta operación privilegiada.
+    const { data: resultado, error: errGuardar } = await supabase
+      .rpc("guardar_evaluacion_atomica", {
+        p_solicitud_id: solicitudId,
+        p_actor_id: userData.user.id,
+        p_actor_nombre: evaluador,
+        p_nombre_portero: nombre,
+        p_lateralidad: lateralidad || "N/D",
+        p_anio_nacimiento: anioNacimiento || null,
+        p_equipo: equipo,
+        p_row: row,
+        p_respuestas: respuestas,
+      })
       .single();
-    if (errEvaluacion) throw errEvaluacion;
+    if (errGuardar) throw errGuardar;
 
-    if (respuestas.length > 0) {
-      const filasRespuestas = respuestas.map((r: { item_id: string; valor: number }) => ({
-        evaluacion_id: evaluacionCreada.id,
-        item_id: r.item_id,
-        valor: r.valor,
-      }));
-      const { error: errRespuestas } = await supabase
-        .from("respuestas_evaluacion")
-        .insert(filasRespuestas);
-      if (errRespuestas) throw errRespuestas;
-    }
-
-    // Registro de auditoría (no bloquea la respuesta si falla, solo se avisa por log)
-    const { error: errAuditoria } = await supabase.from("auditoria").insert({
-      actor_id: userData.user.id,
-      actor_nombre: evaluador,
-      accion: "crear_evaluacion",
-      tabla: "evaluaciones",
-      registro_id: evaluacionCreada.id,
-      detalle: { portero: nombre, equipo, fecha_partido: row.fecha_partido || null },
+    return jsonResponse({
+      success: true,
+      evaluacion_id: resultado.evaluacion_id,
+      duplicada: resultado.duplicada,
     });
-    if (errAuditoria) console.error("No se pudo registrar la auditoría:", errAuditoria);
-
-    return jsonResponse({ success: true, evaluacion_id: evaluacionCreada.id });
   } catch (err) {
     console.error(err);
     const mensaje = (err as any)?.message || "Error al guardar la evaluación.";
     return jsonResponse({ error: mensaje }, 500);
   }
 });
-
-// --- Helpers: misma lógica que tenía el cliente (búsqueda case-insensitive, creación
-// si no existe, y reintento en caso de colisión por inserción simultánea) ---
-
-async function getOrCreateTecnicoId(supabase: any, nombre: string): Promise<string> {
-  return getOrCreateSimple(supabase, "tecnicos", nombre);
-}
-
-async function getOrCreateEquipoId(supabase: any, nombre: string): Promise<string> {
-  return getOrCreateSimple(supabase, "equipos", nombre);
-}
-
-async function getOrCreateSimple(supabase: any, tabla: string, nombre: string): Promise<string> {
-  const { data: encontrados, error: errBuscar } = await supabase
-    .from(tabla)
-    .select("id")
-    .ilike("nombre", nombre)
-    .limit(1);
-  if (errBuscar) throw errBuscar;
-  if (encontrados && encontrados.length > 0) return encontrados[0].id;
-
-  const { data: creado, error: errCrear } = await supabase
-    .from(tabla)
-    .insert({ nombre })
-    .select("id")
-    .single();
-  if (!errCrear) return creado.id;
-
-  // Colisión: otro guardado simultáneo lo creó primero. Lo buscamos y reutilizamos.
-  if (errCrear.code === "23505") {
-    const { data: reintento, error: errReintento } = await supabase
-      .from(tabla)
-      .select("id")
-      .ilike("nombre", nombre)
-      .limit(1);
-    if (!errReintento && reintento && reintento.length > 0) return reintento[0].id;
-  }
-  throw errCrear;
-}
-
-async function getOrCreatePorteroId(
-  supabase: any,
-  nombre: string,
-  lateralidad: string | null,
-  anioNacimiento: string | number | null
-): Promise<string> {
-  const { data: encontrados, error: errBuscar } = await supabase
-    .from("porteros")
-    .select("id")
-    .ilike("nombre", nombre)
-    .limit(1);
-  if (errBuscar) throw errBuscar;
-
-  if (encontrados && encontrados.length > 0) {
-    const id = encontrados[0].id;
-    const patch: Record<string, unknown> = {};
-    if (lateralidad && lateralidad !== "N/D") patch.lateralidad = lateralidad;
-    if (anioNacimiento) patch.anio_nacimiento = anioNacimiento;
-    if (Object.keys(patch).length > 0) {
-      const { error: errPatch } = await supabase.from("porteros").update(patch).eq("id", id);
-      if (errPatch) throw errPatch;
-    }
-    return id;
-  }
-
-  const { data: creado, error: errCrear } = await supabase
-    .from("porteros")
-    .insert({
-      nombre,
-      lateralidad: lateralidad || "N/D",
-      anio_nacimiento: anioNacimiento || null,
-    })
-    .select("id")
-    .single();
-  if (!errCrear) return creado.id;
-
-  if (errCrear.code === "23505") {
-    const { data: reintento, error: errReintento } = await supabase
-      .from("porteros")
-      .select("id")
-      .ilike("nombre", nombre)
-      .limit(1);
-    if (!errReintento && reintento && reintento.length > 0) return reintento[0].id;
-  }
-  throw errCrear;
-}
