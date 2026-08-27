@@ -83,13 +83,6 @@
     });
   }
 
-  function marcarIntento(entrada) {
-    return Object.assign({}, entrada, {
-      ultimoIntentoEn: new Date().toISOString(),
-      intentosSync: (entrada.intentosSync || 0) + 1
-    });
-  }
-
   function resumir(cola) {
     return cola.reduce((resumen, entrada) => {
       resumen.total += 1;
@@ -116,7 +109,6 @@
     encolar,
     prepararReintento,
     marcarFallo,
-    marcarIntento,
     resumir,
     clasificarHttp
   };
