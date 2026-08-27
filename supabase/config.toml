@@ -1,0 +1,32 @@
+# Configuración que reproduce las funciones desplegadas actualmente.
+# No contiene secretos. Las claves privadas se leen desde variables de entorno de Supabase.
+
+project_id = "ramnvcuwyfhepspzzzpn"
+
+[functions.guardar-evaluacion]
+verify_jwt = false
+entrypoint = "./functions/guardar-evaluacion/guardar-evaluacion.ts"
+
+[functions.eliminar-evaluacion]
+verify_jwt = false
+
+[functions.editar-portero]
+verify_jwt = false
+
+[functions.editar_evaluacion]
+verify_jwt = false
+
+[functions.fusionar_equipos]
+verify_jwt = false
+
+[functions.sentry-tunnel]
+verify_jwt = false
+
+[functions.aprobar-usuario]
+verify_jwt = false
+
+[functions.rechazar-usuario]
+verify_jwt = false
+
+[functions.actualizar-usuario]
+verify_jwt = false
