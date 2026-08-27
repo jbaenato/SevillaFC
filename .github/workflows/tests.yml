@@ -1,0 +1,39 @@
+name: Pruebas
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  cola-offline:
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v6
+      - name: Preparar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Comprobar sintaxis
+        run: npm run check
+      - name: Ejecutar pruebas unitarias
+        run: npm test
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Probar la aplicación en Chromium
+        run: npm run test:browser
+      - name: Guardar informe
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

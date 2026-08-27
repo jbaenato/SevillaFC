@@ -1,0 +1,12 @@
+{
+  "name": "sevillafc-evaluacion-porteros",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "playwright test",
+    "check": "node --check app.js && node --check service-worker.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}
