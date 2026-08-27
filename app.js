@@ -781,7 +781,13 @@ document.getElementById("btnLogout").addEventListener("click", async () => {
 
 sb.auth.onAuthStateChange((evento, session) => {
   sesionActual = session;
-  if (session) mostrarApp();
+  if (session) {
+    mostrarApp().then(() => {
+      if (evento === "SIGNED_IN" || evento === "TOKEN_REFRESHED") {
+        sincronizarPendientes({ reintentarSesion: true });
+      }
+    });
+  }
   else if (evento !== "SIGNED_OUT" && !navigator.onLine && obtenerPerfilOffline()) mostrarAppOffline();
   else mostrarLogin();
 });
@@ -800,7 +806,9 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && appIniciada){
     sb.auth.getSession().then(({ data }) => {
       sesionActual = data.session;
-      if (data.session && navigator.onLine) sincronizarPendientes();
+      if (data.session && navigator.onLine) {
+        sincronizarPendientes({ reintentarSesion: true });
+      }
     });
   }
 });
@@ -1684,7 +1692,12 @@ document.getElementById("volverEditar").addEventListener("click", () => {
 // Se usa tanto al guardar en el momento como al sincronizar evaluaciones pendientes offline.
 async function guardarEnSupabase(p){
   const token = await obtenerAccessToken();
-  if (!token) throw new Error("Sesión no válida. Vuelve a iniciar sesión.");
+  if (!token) {
+    const errorSesion = new Error("Sesión no válida. Vuelve a iniciar sesión.");
+    errorSesion.status = 401;
+    errorSesion.esErrorSesion = true;
+    throw errorSesion;
+  }
 
   let res;
   try {
@@ -1713,10 +1726,11 @@ async function guardarEnSupabase(p){
     let mensaje = "HTTP " + res.status;
     try { const cuerpo = await res.json(); if (cuerpo.error) mensaje = cuerpo.error; } catch(e){}
     const error = new Error(mensaje);
-    // La petición SÍ ha llegado al servidor y este la ha rechazado (datos inválidos, sesión
-    // caducada, permisos...). Reintentarla sin cambiar nada no lo va a arreglar, así que no
-    // debe tratarse como "sin conexión".
-    error.esRechazoServidor = true;
+    error.status = res.status;
+    const clasificacion = OfflineQueue.clasificarHttp(res.status);
+    error.esErrorSesion = clasificacion === OfflineQueue.ESTADO_SESION;
+    error.esTransitorioServidor = clasificacion === "transitorio";
+    error.esRechazoServidor = clasificacion === OfflineQueue.ESTADO_ERROR;
     throw error;
   }
 }
@@ -1747,11 +1761,23 @@ document.getElementById("confirmarGuardar").addEventListener("click", async () =
       confirmarBtn.textContent = "Confirmar y guardar";
       return;
     }
-    // No se pudo llegar al servidor (sin conexión, red inestable...): guardamos la evaluación
-    // en el dispositivo y la subiremos automáticamente en cuanto se recupere la conexión.
-    guardarPendienteOffline(p);
+    // No se pudo completar el envío (sin conexión, sesión caducada o fallo temporal):
+    // primero comprobamos que el dispositivo ha guardado realmente la evaluación. Solo
+    // después cerramos el formulario.
+    try {
+      guardarPendienteOffline(p);
+    } catch(errorAlGuardar){
+      setStatus("No se ha podido guardar la evaluación en este dispositivo. No cierres este formulario y vuelve a intentarlo.", "var(--danger)");
+      reportarError(errorAlGuardar, { contexto: "guardar-pendiente-offline" });
+      confirmarBtn.disabled = false;
+      confirmarBtn.textContent = "Confirmar y guardar";
+      return;
+    }
     document.getElementById("modalRepaso").style.display = "none";
-    setStatus("Sin conexión: la evaluación se ha guardado en el dispositivo y se subirá sola en cuanto haya red.", "var(--accent)");
+    const mensajePendiente = err.esErrorSesion
+      ? "La sesión necesita renovarse. La evaluación está guardada en este dispositivo y se subirá al volver a iniciar sesión."
+      : "Sin conexión: la evaluación se ha guardado en el dispositivo y se subirá sola en cuanto haya red.";
+    setStatus(mensajePendiente, "var(--accent)");
     resetForm();
     pendienteGuardar = null;
   }
@@ -1894,82 +1920,163 @@ function intentarRestaurarBorrador(){
 
 // ---------- Cola de evaluaciones pendientes de subir (modo sin conexión) ----------
 
+let errorLecturaColaOffline = null;
+
 function obtenerColaPendientes(){
   try {
-    const guardado = localStorage.getItem(clavePorUsuario(PENDIENTES_KEY));
-    return guardado ? JSON.parse(guardado) : [];
-  } catch(e){ return []; }
+    const cola = OfflineQueue.leer(localStorage, clavePorUsuario(PENDIENTES_KEY));
+    errorLecturaColaOffline = null;
+    return cola;
+  } catch(e){
+    errorLecturaColaOffline = e;
+    reportarError(e, { contexto: "leer-cola-offline" });
+    return [];
+  }
 }
 
 function guardarColaPendientes(cola){
-  try { localStorage.setItem(clavePorUsuario(PENDIENTES_KEY), JSON.stringify(cola)); } catch(e){}
+  OfflineQueue.guardar(localStorage, clavePorUsuario(PENDIENTES_KEY), cola);
+  errorLecturaColaOffline = null;
 }
 
 function guardarPendienteOffline(p){
-  const cola = obtenerColaPendientes();
-  cola.push(Object.assign({}, p, { guardadoEn: new Date().toISOString() }));
-  guardarColaPendientes(cola);
+  OfflineQueue.encolar(localStorage, clavePorUsuario(PENDIENTES_KEY), p);
+  errorLecturaColaOffline = null;
   actualizarIndicadorPendientes();
 }
 
 function actualizarIndicadorPendientes(sincronizandoAhora){
   const banner = document.getElementById("pendientesBanner");
   const texto = document.getElementById("pendientesTexto");
-  const n = obtenerColaPendientes().length;
-  if (n === 0){
+  const cola = obtenerColaPendientes();
+  if (errorLecturaColaOffline){
+    banner.style.display = "flex";
+    texto.textContent = "Hay evaluaciones guardadas que la aplicación no puede leer. No borres los datos de la app y comunícalo al coordinador.";
+    return;
+  }
+  const resumen = OfflineQueue.resumir(cola);
+  if (resumen.total === 0){
     banner.style.display = "none";
     return;
   }
   banner.style.display = "flex";
-  const plural = n === 1 ? "" : "es";
-  texto.textContent = sincronizandoAhora
-    ? "Subiendo " + n + " evaluación" + plural + " pendiente" + (n === 1 ? "" : "s") + "…"
-    : n + " evaluación" + plural + " pendiente" + (n === 1 ? "" : "s") + " de subir. Se subirán solas al recuperar conexión.";
+  if (sincronizandoAhora && resumen.pendiente > 0){
+    texto.textContent = "Subiendo " + resumen.pendiente + " de " + resumen.total + " evaluación(es) guardada(s)…";
+    return;
+  }
+  if (resumen.error > 0){
+    const primeraConError = cola.find(item => item.estadoSync === OfflineQueue.ESTADO_ERROR);
+    const motivo = primeraConError && primeraConError.errorSync ? " Motivo: " + primeraConError.errorSync : "";
+    texto.textContent = resumen.total + " evaluación(es) guardada(s) en este dispositivo. " +
+      resumen.error + " necesita(n) revisión y no se eliminarán." + motivo;
+    return;
+  }
+  if (resumen.sesion > 0){
+    texto.textContent = resumen.total + " evaluación(es) guardada(s) en este dispositivo. " +
+      resumen.sesion + " se subirá(n) cuando la sesión vuelva a estar activa.";
+    return;
+  }
+  texto.textContent = resumen.total + " evaluación(es) pendiente(s) de subir. Se subirán solas al recuperar conexión.";
 }
 
 let sincronizandoPendientes = false;
 
-async function sincronizarPendientes(){
+async function sincronizarPendientes(opciones){
   if (sincronizandoPendientes) return;
   let cola = obtenerColaPendientes();
-  if (cola.length === 0) return;
+  if (errorLecturaColaOffline || cola.length === 0) return;
+
+  const opts = opciones && typeof opciones === "object" && !opciones.type ? opciones : {};
+  const preparada = OfflineQueue.prepararReintento(cola, {
+    incluirErrores: !!opts.reintentarErrores,
+    incluirSesion: !!opts.reintentarSesion
+  });
+  if (JSON.stringify(preparada) !== JSON.stringify(cola)){
+    cola = preparada;
+    try {
+      guardarColaPendientes(cola);
+    } catch(e){
+      reportarError(e, { contexto: "preparar-reintento-offline" });
+      setStatus("No se ha podido actualizar la cola guardada. No borres los datos de la aplicación.", "var(--danger)");
+      return;
+    }
+  }
+  if (!cola.some(item => item.estadoSync === OfflineQueue.ESTADO_PENDIENTE)){
+    actualizarIndicadorPendientes();
+    return;
+  }
 
   sincronizandoPendientes = true;
   actualizarIndicadorPendientes(true);
   let algunaSubida = false;
-  const rechazadas = [];
+  let incidencia = null;
 
   let i = 0;
   while (i < cola.length){
+    if (cola[i].estadoSync !== OfflineQueue.ESTADO_PENDIENTE){
+      i += 1;
+      continue;
+    }
+
     try {
       await guardarEnSupabase(cola[i]);
-      cola.splice(i, 1);
-      guardarColaPendientes(cola);
-      algunaSubida = true;
-      actualizarIndicadorPendientes(true);
     } catch(e){
-      if (e.esRechazoServidor){
-        // El servidor la ha rechazado de verdad (no es un problema de conexión): no tiene
-        // sentido reintentarla sola. La sacamos de la cola y avisamos, para que no bloquee
-        // a las demás evaluaciones pendientes detrás de ella.
-        reportarError(e, { contexto: "sincronizar-pendiente", motivo: "rechazo_servidor" });
-        rechazadas.push({ item: cola[i], motivo: e.message });
-        cola.splice(i, 1);
+      if (e.esErrorSesion){
+        cola[i] = OfflineQueue.marcarFallo(
+          cola[i], OfflineQueue.ESTADO_SESION, e.message, e.status
+        );
+        incidencia = "La sesión ha caducado. La evaluación sigue guardada y se subirá al iniciar sesión de nuevo.";
+      } else if (e.esRechazoServidor){
+        cola[i] = OfflineQueue.marcarFallo(
+          cola[i], OfflineQueue.ESTADO_ERROR, e.message, e.status
+        );
+        incidencia = "Hay una evaluación que necesita revisión, pero sigue guardada en el dispositivo.";
+      } else {
+        // Un corte de red, un límite temporal o un error 5xx no cambia el estado: se
+        // conserva para otro intento automático.
+        cola[i] = OfflineQueue.marcarFallo(
+          cola[i], OfflineQueue.ESTADO_PENDIENTE, e.message, e.status
+        );
+      }
+
+      try {
         guardarColaPendientes(cola);
+      } catch(errorAlGuardar){
+        reportarError(errorAlGuardar, { contexto: "persistir-fallo-sincronizacion" });
+        incidencia = "No se ha podido actualizar la cola del dispositivo. No borres los datos de la aplicación.";
+        break;
+      }
+
+      reportarError(e, {
+        contexto: "sincronizar-pendiente",
+        motivo: e.esErrorSesion ? "sesion" : (e.esRechazoServidor ? "rechazo_servidor" : "temporal")
+      });
+
+      if (e.esRechazoServidor){
+        i += 1;
         continue;
       }
-      // Fallo de red real: seguimos sin conexión. Paramos aquí y lo reintentamos más tarde,
-      // dejando en la cola esta evaluación y las siguientes.
       break;
     }
+
+    // Solo se elimina de la cola después de que el servidor haya confirmado el éxito.
+    cola.splice(i, 1);
+    try {
+      guardarColaPendientes(cola);
+    } catch(errorAlEliminar){
+      reportarError(errorAlEliminar, { contexto: "eliminar-pendiente-confirmada" });
+      incidencia = "Supabase confirmó el guardado, pero el dispositivo no pudo actualizar la cola. No cierres la app y comunícalo al coordinador.";
+      break;
+    }
+    algunaSubida = true;
+    actualizarIndicadorPendientes(true);
   }
 
   sincronizandoPendientes = false;
   actualizarIndicadorPendientes();
 
-  if (rechazadas.length > 0){
-    const detalle = rechazadas.map(r => (r.item.nombre || "portero") + ": " + r.motivo).join(" · ");
-    setStatus(rechazadas.length + " evaluación(es) pendiente(s) NO se pudieron subir y se han descartado de la cola: " + detalle + ". Coméntalo con el coordinador.", "var(--danger)");
+  if (incidencia){
+    setStatus(incidencia, "var(--danger)");
   }
 
   if (algunaSubida){
@@ -1981,7 +2088,9 @@ async function sincronizarPendientes(){
 }
 
 window.addEventListener("online", sincronizarPendientes);
-document.getElementById("reintentarSync").addEventListener("click", sincronizarPendientes);
+document.getElementById("reintentarSync").addEventListener("click", () => {
+  sincronizarPendientes({ reintentarErrores: true, reintentarSesion: true });
+});
 setInterval(sincronizarPendientes, 30000);
 
 document.getElementById("exportar").addEventListener("click", async () => {
@@ -2089,7 +2198,7 @@ function iniciarApp(){
   cargarListaEquipos();
   cargarListaTecnicos();
   actualizarIndicadorPendientes();
-  sincronizarPendientes();
+  sincronizarPendientes({ reintentarSesion: true });
 
   // Autoguardado del borrador: cualquier cambio en los campos del formulario (texto o radios),
   // más un intervalo de seguridad por si algún cambio no dispara los eventos anteriores.
