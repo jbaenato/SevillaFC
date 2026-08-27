@@ -1,3 +1,129 @@
+// BEGIN OFFLINE_QUEUE_CORE
+(function (global) {
+  "use strict";
+
+  const ESTADO_PENDIENTE = "pendiente";
+  const ESTADO_SESION = "sesion";
+  const ESTADO_ERROR = "error";
+
+  function crearIdLocal() {
+    if (global.crypto && typeof global.crypto.randomUUID === "function") {
+      return global.crypto.randomUUID();
+    }
+    return "offline-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+  }
+
+  function normalizarEntrada(item, ahora) {
+    const entrada = Object.assign({}, item || {});
+    if (!entrada.idLocal) entrada.idLocal = crearIdLocal();
+    if (!entrada.guardadoEn) entrada.guardadoEn = (ahora || new Date()).toISOString();
+    if (![ESTADO_PENDIENTE, ESTADO_SESION, ESTADO_ERROR].includes(entrada.estadoSync)) {
+      entrada.estadoSync = ESTADO_PENDIENTE;
+    }
+    if (!Number.isInteger(entrada.intentosSync) || entrada.intentosSync < 0) {
+      entrada.intentosSync = 0;
+    }
+    if (entrada.errorSync === undefined) entrada.errorSync = null;
+    if (entrada.codigoErrorSync === undefined) entrada.codigoErrorSync = null;
+    return entrada;
+  }
+
+  function leer(storage, clave) {
+    const guardado = storage.getItem(clave);
+    if (!guardado) return [];
+    const datos = JSON.parse(guardado);
+    if (!Array.isArray(datos)) throw new Error("La cola offline guardada no tiene un formato válido.");
+    return datos.map((item) => normalizarEntrada(item));
+  }
+
+  function guardar(storage, clave, cola) {
+    const serializado = JSON.stringify(cola);
+    storage.setItem(clave, serializado);
+    if (storage.getItem(clave) !== serializado) {
+      throw new Error("El dispositivo no ha confirmado el guardado de la evaluación.");
+    }
+    return true;
+  }
+
+  function encolar(storage, clave, payload, ahora) {
+    const cola = leer(storage, clave);
+    const entrada = normalizarEntrada(Object.assign({}, payload, {
+      estadoSync: ESTADO_PENDIENTE,
+      errorSync: null,
+      codigoErrorSync: null,
+      intentosSync: 0
+    }), ahora);
+    cola.push(entrada);
+    guardar(storage, clave, cola);
+    return entrada;
+  }
+
+  function prepararReintento(cola, opciones) {
+    const opts = opciones || {};
+    return cola.map((entrada) => {
+      const debeReintentar =
+        (opts.incluirErrores && entrada.estadoSync === ESTADO_ERROR) ||
+        (opts.incluirSesion && entrada.estadoSync === ESTADO_SESION);
+      if (!debeReintentar) return entrada;
+      return Object.assign({}, entrada, {
+        estadoSync: ESTADO_PENDIENTE,
+        errorSync: null,
+        codigoErrorSync: null
+      });
+    });
+  }
+
+  function marcarFallo(entrada, estado, error, codigo) {
+    return Object.assign({}, entrada, {
+      estadoSync: estado,
+      errorSync: error || "No se pudo sincronizar.",
+      codigoErrorSync: codigo || null,
+      ultimoIntentoEn: new Date().toISOString(),
+      intentosSync: (entrada.intentosSync || 0) + 1
+    });
+  }
+
+  function marcarIntento(entrada) {
+    return Object.assign({}, entrada, {
+      ultimoIntentoEn: new Date().toISOString(),
+      intentosSync: (entrada.intentosSync || 0) + 1
+    });
+  }
+
+  function resumir(cola) {
+    return cola.reduce((resumen, entrada) => {
+      resumen.total += 1;
+      if (entrada.estadoSync === ESTADO_ERROR) resumen.error += 1;
+      else if (entrada.estadoSync === ESTADO_SESION) resumen.sesion += 1;
+      else resumen.pendiente += 1;
+      return resumen;
+    }, { total: 0, pendiente: 0, sesion: 0, error: 0 });
+  }
+
+  function clasificarHttp(status) {
+    if (status === 401) return ESTADO_SESION;
+    if (status === 408 || status === 429 || status >= 500) return "transitorio";
+    return ESTADO_ERROR;
+  }
+
+  global.OfflineQueue = {
+    ESTADO_PENDIENTE,
+    ESTADO_SESION,
+    ESTADO_ERROR,
+    normalizarEntrada,
+    leer,
+    guardar,
+    encolar,
+    prepararReintento,
+    marcarFallo,
+    marcarIntento,
+    resumir,
+    clasificarHttp
+  };
+})(globalThis);
+// END OFFLINE_QUEUE_CORE
+
+
 // --- Configuración de Supabase ---
 const SUPABASE_URL = "https://ramnvcuwyfhepspzzzpn.supabase.co";
 const SUPABASE_KEY = "sb_publishable_6B6PMd8eB85OKIS1e74Qgg_YPmTaAdj";
