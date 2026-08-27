@@ -4,6 +4,7 @@ const SUPABASE = "https://ramnvcuwyfhepspzzzpn.supabase.co";
 
 test("una evaluación offline sobrevive a un rechazo y solo se elimina tras confirmación", async ({ page, context }) => {
   let respuestaGuardado = "sin-red";
+  const solicitudesRecibidas = [];
 
   const clienteSupabaseSimulado = `
     window.supabase = {
@@ -38,6 +39,8 @@ test("una evaluación offline sobrevive a un rechazo y solo se elimina tras conf
     const url = route.request().url();
 
     if (url.includes("/functions/v1/guardar-evaluacion")) {
+      const payload = route.request().postDataJSON();
+      solicitudesRecibidas.push(payload.solicitud_id);
       if (respuestaGuardado === "sin-red") return route.abort("internetdisconnected");
       if (respuestaGuardado === "rechazo") {
         return route.fulfill({
@@ -115,4 +118,7 @@ test("una evaluación offline sobrevive a un rechazo y solo se elimina tras conf
 
   await expect.poll(() => page.evaluate(() => obtenerColaPendientes().length)).toBe(0);
   await expect(page.locator("#pendientesBanner")).toBeHidden();
+  expect(solicitudesRecibidas.length).toBeGreaterThanOrEqual(3);
+  expect(new Set(solicitudesRecibidas).size).toBe(1);
+  expect(solicitudesRecibidas[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
 });

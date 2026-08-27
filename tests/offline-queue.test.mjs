@@ -39,6 +39,8 @@ test("confirma el guardado antes de aceptar una evaluación offline", () => {
   const cola = Queue.leer(storage, "pendientes");
   assert.equal(cola.length, 1);
   assert.equal(cola[0].idLocal, entrada.idLocal);
+  assert.equal(cola[0].solicitudId, entrada.solicitudId);
+  assert.match(cola[0].solicitudId, /^[0-9a-f-]{36}$/i);
   assert.equal(cola[0].estadoSync, Queue.ESTADO_PENDIENTE);
   assert.equal(cola[0].guardadoEn, "2026-08-27T10:00:00.000Z");
 });
@@ -78,6 +80,7 @@ test("migra las evaluaciones antiguas sin eliminar sus datos", () => {
   assert.equal(cola[0].equipo, "Equipo anterior");
   assert.equal(cola[0].estadoSync, Queue.ESTADO_PENDIENTE);
   assert.ok(cola[0].idLocal);
+  assert.ok(cola[0].solicitudId);
 });
 
 test("un rechazo queda guardado como necesita revisión", () => {
