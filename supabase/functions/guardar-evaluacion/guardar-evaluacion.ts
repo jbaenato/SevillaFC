@@ -115,11 +115,14 @@ Deno.serve(async (req) => {
   // el nombre de otro técnico.
   const { data: perfil, error: errPerfil } = await supabase
     .from("perfiles")
-    .select("nombre")
+    .select("nombre, aprobado, activo")
     .eq("id", userData.user.id)
     .maybeSingle();
   if (errPerfil) return jsonResponse({ error: "No se pudo comprobar tu perfil de técnico." }, 500);
-  const evaluador = (perfil && perfil.nombre) ? perfil.nombre : userData.user.email;
+  if (!perfil || !perfil.aprobado || !perfil.activo) {
+    return jsonResponse({ error: "Tu cuenta todavía no ha sido aprobada por un coordinador." }, 403);
+  }
+  const evaluador = perfil.nombre || userData.user.email;
   if (!evaluador) return jsonResponse({ error: "Tu perfil no tiene nombre de técnico configurado." }, 400);
 
   try {
