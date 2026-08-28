@@ -1,9 +1,10 @@
-const CACHE_NAME = "porteros-cache-v25";
+const CACHE_NAME = "porteros-cache-v26";
 const FILES_TO_CACHE = [
   "./index.html",
   "./app.js",
   "./styles.css",
   "./vendor/sentry-bundle.min.js",
+  "./sentry.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
