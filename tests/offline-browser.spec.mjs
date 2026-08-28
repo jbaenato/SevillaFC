@@ -3,6 +3,9 @@ import { expect, test } from "@playwright/test";
 const SUPABASE = "https://ramnvcuwyfhepspzzzpn.supabase.co";
 
 test("una evaluación offline sobrevive a un rechazo y solo se elimina tras confirmación", async ({ page, context }) => {
+  await page.addInitScript(() => {
+    globalThis.__SEVILLAFC_CONFIG__ = { sentryEnabled: false };
+  });
   let respuestaGuardado = "sin-red";
   const solicitudesRecibidas = [];
 
