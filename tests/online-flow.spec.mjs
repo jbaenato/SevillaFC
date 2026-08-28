@@ -13,7 +13,7 @@ test("flujo online completo: login, evaluación, guardado y consulta", async ({ 
 
   await page.addInitScript(
     ({ url, key }) => {
-      globalThis.__SEVILLAFC_CONFIG__ = { supabaseUrl: url, supabaseKey: key };
+      globalThis.__SEVILLAFC_CONFIG__ = { supabaseUrl: url, supabaseKey: key, sentryEnabled: false };
     },
     { url: supabaseUrl, key: supabaseKey }
   );
