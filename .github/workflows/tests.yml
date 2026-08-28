@@ -28,12 +28,105 @@ jobs:
         run: npm test
       - name: Instalar Chromium
         run: npx playwright install --with-deps chromium
-      - name: Probar la aplicación en Chromium
+      - name: Probar la aplicación offline en Chromium
         run: npm run test:browser
-      - name: Guardar informe
+      - name: Guardar informe offline
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-offline
+          path: playwright-report/
+          retention-days: 14
+
+  flujo-online:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v6
+      - name: Preparar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Instalar Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.116.0
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Iniciar Supabase temporal y cargar el esquema
+        shell: bash
+        run: |
+          mv supabase/migrations "$RUNNER_TEMP/migrations-produccion"
+          mkdir -p supabase/migrations
+          supabase start
+          supabase status -o env > "$RUNNER_TEMP/supabase.env"
+
+          set -a
+          . "$RUNNER_TEMP/supabase.env"
+          set +a
+          ANON_KEY="${ANON_KEY:-${PUBLISHABLE_KEY:-}}"
+          test -n "$API_URL"
+          test -n "$DB_URL"
+          test -n "$ANON_KEY"
+
+          echo "API_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "DB_URL=$DB_URL" >> "$GITHUB_ENV"
+          echo "ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+          rm "$RUNNER_TEMP/supabase.env"
+          unset SERVICE_ROLE_KEY
+
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/supabase-schema.sql
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/seed-online-e2e.sql
+      - name: Crear técnico de prueba aprobado
+        shell: bash
+        env:
+          TEST_USER_EMAIL: tecnico.e2e@example.test
+          TEST_USER_PASSWORD: E2e-Online-2026!
+        run: |
+          respuesta="$(curl --silent --show-error --fail             --request POST "$API_URL/auth/v1/signup"             --header "apikey: $ANON_KEY"             --header "Content-Type: application/json"             --data "{"email":"$TEST_USER_EMAIL","password":"$TEST_USER_PASSWORD"}")"
+
+          TEST_USER_ID="$(printf '%s' "$respuesta" | node -e '
+            let data = "";
+            process.stdin.on("data", chunk => data += chunk);
+            process.stdin.on("end", () => {
+              const result = JSON.parse(data);
+              const id = result.user && result.user.id;
+              if (!id) process.exit(1);
+              process.stdout.write(id);
+            });
+          ')"
+          test -n "$TEST_USER_ID"
+          echo "TEST_USER_EMAIL=$TEST_USER_EMAIL" >> "$GITHUB_ENV"
+          echo "TEST_USER_PASSWORD=$TEST_USER_PASSWORD" >> "$GITHUB_ENV"
+
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -v user_id="$TEST_USER_ID" <<'SQL'
+          INSERT INTO public.perfiles (id, nombre, rol, aprobado, activo)
+          VALUES (:'user_id'::uuid, 'Técnico E2E', 'tecnico', true, true)
+          ON CONFLICT (id) DO UPDATE
+          SET nombre = EXCLUDED.nombre,
+              rol = EXCLUDED.rol,
+              aprobado = EXCLUDED.aprobado,
+              activo = EXCLUDED.activo;
+          SQL
+      - name: Ejecutar el flujo online completo
+        env:
+          TEST_SUPABASE_URL: ${{ env.API_URL }}
+          TEST_SUPABASE_ANON_KEY: ${{ env.ANON_KEY }}
+          TEST_USER_EMAIL: ${{ env.TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ env.TEST_USER_PASSWORD }}
+        run: npm run test:online
+      - name: Verificar datos persistidos y auditoría
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/verify-online-e2e.sql
+      - name: Detener Supabase temporal
+        if: always()
+        run: supabase stop --no-backup
+      - name: Guardar informe online
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-online
           path: playwright-report/
           retention-days: 14
