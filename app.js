@@ -131,23 +131,14 @@ const SUPABASE_KEY = APP_CONFIG.supabaseKey || "sb_publishable_6B6PMd8eB85OKIS1e
 const TABLE = "evaluaciones";
 
 // --- Seguimiento de errores (Sentry) ---
-// Deja SENTRY_DSN vacío para desactivarlo sin que falle nada; rellénalo con el DSN real
-// de tu proyecto en sentry.io (Settings → Client Keys) para activarlo.
-const SENTRY_DSN = "";
-if (SENTRY_DSN && window.Sentry){
-  Sentry.init({ dsn: SENTRY_DSN, environment: "produccion" });
-}
-
-// Envía un error a Sentry (si está configurado) sin interrumpir el flujo de la app aunque
-// falle el propio envío. "contexto" son datos extra para facilitar el diagnóstico.
+// La inicialización vive en sentry.js. Esta función única permite que todo el código
+// reporte incidencias controladas sin duplicar clientes ni enviar datos durante las pruebas.
 function reportarError(error, contexto){
-  try {
-    if (SENTRY_DSN && window.Sentry){
-      Sentry.captureException(error, { extra: contexto || {} });
-    } else {
-      console.error("[reportarError]", error, contexto || {});
-    }
-  } catch(e){ /* nunca debe romper la app por fallar el propio reporte de errores */ }
+  if (window.AppSentry){
+    AppSentry.capturarExcepcion(error, contexto);
+  } else {
+    console.error("[reportarError]", error, contexto || {});
+  }
 }
 const BORRADOR_KEY = "porteros_borrador_v1";
 const PENDIENTES_KEY = "porteros_pendientes_sync_v1";
