@@ -125,8 +125,9 @@
 
 
 // --- Configuración de Supabase ---
-const SUPABASE_URL = "https://ramnvcuwyfhepspzzzpn.supabase.co";
-const SUPABASE_KEY = "sb_publishable_6B6PMd8eB85OKIS1e74Qgg_YPmTaAdj";
+const APP_CONFIG = globalThis.__SEVILLAFC_CONFIG__ || {};
+const SUPABASE_URL = APP_CONFIG.supabaseUrl || "https://ramnvcuwyfhepspzzzpn.supabase.co";
+const SUPABASE_KEY = APP_CONFIG.supabaseKey || "sb_publishable_6B6PMd8eB85OKIS1e74Qgg_YPmTaAdj";
 const TABLE = "evaluaciones";
 
 // --- Seguimiento de errores (Sentry) ---
