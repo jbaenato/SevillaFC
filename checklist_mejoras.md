@@ -11,7 +11,7 @@ Marca `[x]` cuando se implemente. Añade líneas nuevas donde encajen a medida q
 - [x] **Auditoría de acciones sensibles** (crear evaluación, editar portero, eliminar evaluación) — tabla `auditoria`, visible solo para coordinador desde la app.
 - [x] **Borrado lógico de evaluaciones** (`eliminado_en` / `eliminado_por`) en vez de borrado físico — recuperable en caso de error.
 - [x] **Validación de datos en las Edge Functions** — `guardar-evaluacion` y `editar-evaluacion` ya validan en servidor: evaluación final A-D, observaciones obligatorias si D, lateralidad/visionado válidos, puntuaciones en rango 0–5, e ítems pertenecientes a la modalidad correcta.
-- [x] **Visibilidad cuando algo falla** — Sentry integrado (listo para activar poniendo el DSN en `app.js`), y se distingue entre fallo de red real (se encola offline) y rechazo del servidor (se muestra directamente, sin bloquear la cola de otras evaluaciones pendientes).
+- [x] **Visibilidad cuando algo falla** — Sentry activo con configuración única, privacidad reforzada y túnel restringido al proyecto autorizado. Las pruebas automáticas no envían telemetría a producción y los rechazos esperados no generan ruido.
 
 ## 🟡 Prioridad media — mantenibilidad
 
