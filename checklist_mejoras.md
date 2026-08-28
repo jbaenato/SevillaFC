@@ -1,6 +1,6 @@
 # Checklist de mejoras — Captación (app de scouting de porteros)
 
-Última actualización: 2026-08-10
+Última actualización: 2026-08-28
 
 Marca `[x]` cuando se implemente. Añade líneas nuevas donde encajen a medida que surjan ideas.
 
@@ -16,8 +16,8 @@ Marca `[x]` cuando se implemente. Añade líneas nuevas donde encajen a medida q
 ## 🟡 Prioridad media — mantenibilidad
 
 - [x] **Separar `index.html` en `app.js` + `styles.css`** — hecho: `index.html` ahora solo contiene estructura.
-- [ ] **Pruebas automáticas mínimas** del flujo crítico (login → guardar evaluación → aparece en la lista), aunque sea con Playwright.
-- [ ] **Entorno de pruebas separado** — un proyecto Supabase de desarrollo (gratis) para probar cambios de esquema/RLS/Edge Functions antes de tocar producción.
+- [x] **Prueba automática del flujo crítico online** — Playwright inicia sesión, crea una evaluación completa mediante la Edge Function, comprueba su búsqueda y detalle, y valida la persistencia y auditoría en PostgreSQL.
+- [x] **Entorno de pruebas aislado** — GitHub Actions levanta un Supabase local temporal con PostgreSQL 17 y datos sintéticos; producción no se utiliza ni se modifica.
 - [ ] **Despliegue automatizado** con GitHub Actions al hacer push a `main`, para evitar subir el archivo equivocado o el despliegue a medias.
 
 ## 🟢 Funcionalidades nuevas con valor
