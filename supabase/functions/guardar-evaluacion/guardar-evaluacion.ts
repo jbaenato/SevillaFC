@@ -9,9 +9,10 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.4";
 
-// Misma clave pública ("publishable"/"anon") que ya usa el frontend — solo sirve para
-// validar el token de sesión contra el servidor de Auth, nunca para leer/escribir datos.
-const PUBLISHABLE_KEY = "sb_publishable_6B6PMd8eB85OKIS1e74Qgg_YPmTaAdj";
+// En local, Supabase inyecta su propia clave anon. En producción conservamos la clave
+// pública actual como alternativa; ninguna de las dos concede permisos privilegiados.
+const PUBLISHABLE_KEY = Deno.env.get("SUPABASE_ANON_KEY") ||
+  "sb_publishable_6B6PMd8eB85OKIS1e74Qgg_YPmTaAdj";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
