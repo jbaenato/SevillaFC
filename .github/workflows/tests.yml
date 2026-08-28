@@ -86,7 +86,13 @@ jobs:
           TEST_USER_EMAIL: tecnico.e2e@example.test
           TEST_USER_PASSWORD: E2e-Online-2026!
         run: |
-          respuesta="$(curl --silent --show-error --fail             --request POST "$API_URL/auth/v1/signup"             --header "apikey: $ANON_KEY"             --header "Content-Type: application/json"             --data "{"email":"$TEST_USER_EMAIL","password":"$TEST_USER_PASSWORD"}")"
+          signup_payload="$(node -e '
+            process.stdout.write(JSON.stringify({
+              email: process.env.TEST_USER_EMAIL,
+              password: process.env.TEST_USER_PASSWORD
+            }));
+          ')"
+          respuesta="$(curl --silent --show-error --fail --request POST "$API_URL/auth/v1/signup" --header "apikey: $ANON_KEY" --header "Content-Type: application/json" --data "$signup_payload")"
 
           TEST_USER_ID="$(printf '%s' "$respuesta" | node -e '
             let data = "";
