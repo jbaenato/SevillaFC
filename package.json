@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "test:browser": "playwright test",
+    "test:browser": "playwright test tests/offline-browser.spec.mjs",
+    "test:online": "playwright test tests/online-flow.spec.mjs",
     "check": "node --check app.js && node --check service-worker.js"
   },
   "devDependencies": {
