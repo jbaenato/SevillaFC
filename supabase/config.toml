@@ -3,6 +3,9 @@
 
 project_id = "ramnvcuwyfhepspzzzpn"
 
+[db]
+major_version = 17
+
 [functions.guardar-evaluacion]
 verify_jwt = false
 entrypoint = "./functions/guardar-evaluacion/guardar-evaluacion.ts"
