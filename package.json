@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "test:browser": "playwright test tests/offline-browser.spec.mjs tests/sentry-browser.spec.mjs",
+    "test:browser": "playwright test tests/offline-browser.spec.mjs tests/sentry-browser.spec.mjs tests/mobile-layout.spec.mjs",
     "test:online": "playwright test tests/online-flow.spec.mjs tests/sentry-tunnel.spec.mjs",
     "check": "node --check app.js && node --check service-worker.js"
   },
