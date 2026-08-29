@@ -15,7 +15,7 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    padding: 16px;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(80px, calc(64px + env(safe-area-inset-bottom))) max(12px, env(safe-area-inset-left));
     background: var(--bg);
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -23,7 +23,9 @@
     line-height: 1.5;
     max-width: 520px;
     margin: 0 auto;
-    padding-bottom: 80px;
+    min-height: 100vh;
+    min-height: 100svh;
+    overflow-x: hidden;
   }
   h1 {
     font-size: 20px;
@@ -32,17 +34,39 @@
   }
   .app-header {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 8px;
   }
-  .app-header h1 { margin: 8px 0; }
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .app-header h1 { margin: 0; }
   .header-logo {
-    width: 48px;
-    height: 48px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     object-fit: cover;
     flex: none;
+  }
+  .header-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+  .header-actions .header-action {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
   }
   h2 {
     font-size: 15px;
@@ -318,6 +342,7 @@
   @media (min-width: 560px) {
     .modal-overlay { align-items: center; }
     .modal-card { border-radius: 16px; }
+    .header-actions { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   }
   .resumen-item {
     display: flex;
