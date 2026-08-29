@@ -4,11 +4,12 @@
 <meta charset="UTF-8">
 <script src="vendor/sentry-bundle.min.js"></script>
 <script src="sentry.js"></script>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Captación">
+<meta name="format-detection" content="telephone=no">
 <meta name="theme-color" content="#185fa5">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -111,15 +112,17 @@
 <div id="appContainer" style="display:none;">
 
 <header class="app-header">
-  <h1>Captación</h1>
-  <div style="display:flex; align-items:center; gap:10px;">
+  <div class="header-brand">
     <img src="icons/icon-512.png" alt="Logo Jose Baena" class="header-logo">
-    <button id="btnEquipos" class="btn-secondary" style="padding:6px 12px; font-size:12px; display:none;">Equipos</button>
-    <button id="btnSolicitudes" class="btn-secondary" style="padding:6px 12px; font-size:12px; display:none;">Solicitudes</button>
-    <button id="btnUsuarios" class="btn-secondary" style="padding:6px 12px; font-size:12px; display:none;">Usuarios</button>
-    <button id="btnAuditoria" class="btn-secondary" style="padding:6px 12px; font-size:12px; display:none;">Auditoría</button>
-    <button id="btnLogout" class="btn-secondary" style="padding:6px 12px; font-size:12px;">Salir</button>
+    <h1>Captación</h1>
   </div>
+  <nav class="header-actions" aria-label="Administración y sesión">
+    <button id="btnEquipos" class="btn-secondary header-action" style="display:none;">Equipos</button>
+    <button id="btnSolicitudes" class="btn-secondary header-action" style="display:none;">Solicitudes</button>
+    <button id="btnUsuarios" class="btn-secondary header-action" style="display:none;">Usuarios</button>
+    <button id="btnAuditoria" class="btn-secondary header-action" style="display:none;">Auditoría</button>
+    <button id="btnLogout" class="btn-secondary header-action">Salir</button>
+  </nav>
 </header>
 
 <div id="borradorBanner" class="banner banner-borrador">
