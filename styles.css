@@ -308,6 +308,14 @@
     min-height: 18px;
   }
   .saved-section { margin-top: 28px; }
+  .saved-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .saved-filters input { min-width: 180px; }
+  .saved-filters select { flex: none; width: auto; }
   .saved-row {
     display: flex;
     justify-content: space-between;
