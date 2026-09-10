@@ -287,8 +287,11 @@
 
 <div class="saved-section">
   <h2>Evaluaciones guardadas</h2>
-  <div class="field-group" style="margin-bottom:10px; display:flex; gap:8px;">
+  <div class="field-group saved-filters">
     <input type="text" id="buscarGuardadas" placeholder="Buscar por portero, equipo o técnico…" style="flex:1;">
+    <select id="filtroAnioNacimiento" aria-label="Filtrar por año de nacimiento">
+      <option value="">Año</option>
+    </select>
     <select id="filtroEvalFinal" style="flex:none; width:auto;">
       <option value="">Evaluación</option>
       <option value="A">A</option>
