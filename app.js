@@ -1172,6 +1172,20 @@ function renderForm(){
 
 let evaluacionesCargadas = [];
 
+function actualizarFiltroAnios(){
+  const select = document.getElementById("filtroAnioNacimiento");
+  const valorActual = select.value;
+  const anios = [...new Set(
+    evaluacionesCargadas
+      .map(ev => String(porteroCampo(ev, "anio_nacimiento") || ""))
+      .filter(Boolean)
+  )].sort((a, b) => Number(b) - Number(a));
+
+  select.innerHTML = '<option value="">Año</option>' +
+    anios.map(anio => '<option value="' + anio + '">' + anio + '</option>').join("");
+  if (anios.includes(valorActual)) select.value = valorActual;
+}
+
 async function renderSavedList(){
   const el = document.getElementById("savedList");
   el.innerHTML = '<div class="empty">Cargando evaluaciones…</div>';
@@ -1182,6 +1196,7 @@ async function renderSavedList(){
     return;
   }
   evaluacionesCargadas = list;
+  actualizarFiltroAnios();
   pintarListaGuardadas(document.getElementById("buscarGuardadas").value);
 }
 
@@ -1200,15 +1215,17 @@ function pintarListaGuardadas(filtro){
   }
   const texto = (filtro || "").trim().toLowerCase();
   const evalFinalFiltro = document.getElementById("filtroEvalFinal").value;
+  const anioFiltro = document.getElementById("filtroAnioNacimiento").value;
 
-  if (!texto && !evalFinalFiltro){
-    el.innerHTML = '<div class="empty">Escribe un nombre de portero, equipo o técnico, o elige una evaluación, para buscar.</div>';
+  if (!texto && !evalFinalFiltro && !anioFiltro){
+    el.innerHTML = '<div class="empty">Escribe un nombre de portero, equipo o técnico, o elige un año o una evaluación, para buscar.</div>';
     return;
   }
   const filtradas = evaluacionesCargadas.filter(ev =>
     (!texto || nombrePorteroDe(ev).toLowerCase().includes(texto) ||
       nombreEquipoDe(ev).toLowerCase().includes(texto) ||
       nombreTecnicoDe(ev).toLowerCase().includes(texto)) &&
+    (!anioFiltro || String(porteroCampo(ev, "anio_nacimiento")) === anioFiltro) &&
     (!evalFinalFiltro || ev.evaluacion_final === evalFinalFiltro)
   );
 
@@ -1220,6 +1237,10 @@ function pintarListaGuardadas(filtro){
 }
 
 document.getElementById("filtroEvalFinal").addEventListener("change", () => {
+  pintarListaGuardadas(document.getElementById("buscarGuardadas").value);
+});
+
+document.getElementById("filtroAnioNacimiento").addEventListener("change", () => {
   pintarListaGuardadas(document.getElementById("buscarGuardadas").value);
 });
 
