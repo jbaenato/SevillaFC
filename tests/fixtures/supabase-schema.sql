@@ -105,6 +105,14 @@ declare
   v_equipo_id uuid;
   v_evaluacion_id uuid;
 begin
+  if p_actor_id is null or not exists (
+    select 1 from public.perfiles as p
+    where p.id = p_actor_id and p.aprobado = true and p.activo = true
+  ) then
+    raise exception using errcode = '42501', message = 'La cuenta no está autorizada para guardar evaluaciones.';
+  end if;
+  perform pg_catalog.set_config('app.evaluation_actor_id', p_actor_id::text, true);
+
   if p_solicitud_id is null then
     raise exception using errcode = '22023', message = 'Falta la clave idempotente.';
   end if;
@@ -316,6 +324,7 @@ CREATE TABLE IF NOT EXISTS "public"."evaluaciones" (
     "eliminado_en" timestamp with time zone,
     "eliminado_por" "uuid",
     "solicitud_id" "uuid",
+    "creado_por" "uuid" DEFAULT nullif(current_setting('app.evaluation_actor_id', true), '')::uuid NOT NULL,
     CONSTRAINT "evaluaciones_evaluacion_final_check" CHECK (("evaluacion_final" = ANY (ARRAY['A'::"text", 'B'::"text", 'C'::"text", 'D'::"text"]))),
     CONSTRAINT "evaluaciones_tipo_visionado_check" CHECK (("tipo_visionado" = ANY (ARRAY['Directo'::"text", 'Video'::"text"])))
 );
@@ -493,6 +502,10 @@ CREATE UNIQUE INDEX "equipos_nombre_unico" ON "public"."equipos" USING "btree" (
 
 CREATE UNIQUE INDEX "evaluaciones_solicitud_id_unico" ON "public"."evaluaciones" USING "btree" ("solicitud_id") WHERE ("solicitud_id" IS NOT NULL);
 
+CREATE INDEX "evaluaciones_creado_por_idx" ON "public"."evaluaciones" USING "btree" ("creado_por");
+
+CREATE INDEX "respuestas_evaluacion_evaluacion_id_idx" ON "public"."respuestas_evaluacion" USING "btree" ("evaluacion_id");
+
 
 
 CREATE UNIQUE INDEX "porteros_nombre_unico" ON "public"."porteros" USING "btree" ("lower"("nombre"));
@@ -510,6 +523,9 @@ ALTER TABLE ONLY "public"."auditoria"
 
 ALTER TABLE ONLY "public"."evaluaciones"
     ADD CONSTRAINT "evaluaciones_eliminado_por_fkey" FOREIGN KEY ("eliminado_por") REFERENCES "auth"."users"("id");
+
+ALTER TABLE ONLY "public"."evaluaciones"
+    ADD CONSTRAINT "evaluaciones_creado_por_fkey" FOREIGN KEY ("creado_por") REFERENCES "auth"."users"("id");
 
 
 
@@ -561,7 +577,7 @@ CREATE POLICY "Lectura solo aprobados" ON "public"."equipos" FOR SELECT TO "auth
 
 
 
-CREATE POLICY "Lectura solo aprobados" ON "public"."evaluaciones" FOR SELECT TO "authenticated" USING ("private"."es_aprobado"());
+CREATE POLICY "Tecnico lee propias o coordinador lee todas" ON "public"."evaluaciones" FOR SELECT TO "authenticated" USING (("private"."es_aprobado"() AND (("creado_por" = ( SELECT "auth"."uid"() AS "uid")) OR "private"."es_coordinador_aprobado"())));
 
 
 
@@ -577,7 +593,9 @@ CREATE POLICY "Lectura solo aprobados" ON "public"."porteros" FOR SELECT TO "aut
 
 
 
-CREATE POLICY "Lectura solo aprobados" ON "public"."respuestas_evaluacion" FOR SELECT TO "authenticated" USING ("private"."es_aprobado"());
+CREATE POLICY "Respuestas de evaluaciones visibles" ON "public"."respuestas_evaluacion" FOR SELECT TO "authenticated" USING (("private"."es_aprobado"() AND (EXISTS ( SELECT 1
+   FROM "public"."evaluaciones" "e"
+  WHERE (("e"."id" = "respuestas_evaluacion"."evaluacion_id") AND (("e"."creado_por" = ( SELECT "auth"."uid"() AS "uid")) OR "private"."es_coordinador_aprobado"()))))));
 
 
 
@@ -920,9 +938,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
-
-
-
 
 
 
