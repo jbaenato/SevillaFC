@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 function clienteSupabaseSimulado(){
   return `
     window.__authCallbacks = [];
-    window.__authCalls = { signUp: [], reset: [], update: [] };
+    window.__authCalls = { signUp: [], reset: [], verify: [], update: [] };
     window.supabase = {
       createClient: function () {
         return { auth: {
@@ -15,6 +15,10 @@ function clienteSupabaseSimulado(){
           signInWithPassword: async function () { return { data: {}, error: null }; },
           signUp: async function (payload) { window.__authCalls.signUp.push(payload); return { data: { session: null }, error: null }; },
           resetPasswordForEmail: async function (email, options) { window.__authCalls.reset.push({ email, options }); return { data: {}, error: null }; },
+          verifyOtp: async function (payload) {
+            window.__authCalls.verify.push(payload);
+            return { data: { session: { user: { id: "usuario-prueba", email: payload.email }, access_token: "token" } }, error: null };
+          },
           updateUser: async function (payload) { window.__authCalls.update.push(payload); return { data: {}, error: null }; },
           signOut: async function () { return { error: null }; }
         }};
@@ -46,7 +50,8 @@ test("el alta y la recuperación vuelven a la raíz real de la app", async ({ pa
   await page.click("#irAOlvide");
   await page.fill("#olvideEmail", "tecnico@example.com");
   await page.click("#btnOlvide");
-  await expect(page.locator("#olvideError")).toContainText("recibirás un enlace");
+  await expect(page.locator("#codigoRecuperacionScreen")).toBeVisible();
+  await expect(page.locator("#codigoRecuperacion")).toBeVisible();
 
   const calls = await page.evaluate(() => window.__authCalls);
   expect(calls.signUp[0].options.emailRedirectTo).toBe("http://127.0.0.1:4173/");
@@ -62,7 +67,7 @@ test("el enlace de recuperación abre el formulario y permite guardar la contras
   await page.evaluate((currentSession) => window.__authCallbacks[0]("PASSWORD_RECOVERY", currentSession), session);
 
   await expect(page.locator("#codigoRecuperacionScreen")).toBeVisible();
-  await expect(page.locator("#codigoRecuperacion")).toHaveCount(0);
+  await expect(page.locator("#codigoRecuperacion")).toBeHidden();
   await page.fill("#nuevaPassword1", "password-nueva");
   await page.fill("#nuevaPassword2", "password-nueva");
   await page.click("#btnGuardarNuevaPassword");
@@ -70,4 +75,20 @@ test("el enlace de recuperación abre el formulario y permite guardar la contras
   const updates = await page.evaluate(() => window.__authCalls.update);
   expect(updates).toEqual([{ password: "password-nueva" }]);
   await expect(page).toHaveURL("http://127.0.0.1:4173/");
+});
+
+test("el código recibido por correo permite verificar y cambiar la contraseña", async ({ page }) => {
+  await page.goto("/");
+  await page.click("#irAOlvide");
+  await page.fill("#olvideEmail", "tecnico@example.com");
+  await page.click("#btnOlvide");
+
+  await page.fill("#codigoRecuperacion", "123456");
+  await page.fill("#nuevaPassword1", "password-nueva");
+  await page.fill("#nuevaPassword2", "password-nueva");
+  await page.click("#btnGuardarNuevaPassword");
+
+  const calls = await page.evaluate(() => window.__authCalls);
+  expect(calls.verify).toEqual([{ email: "tecnico@example.com", token: "123456", type: "recovery" }]);
+  expect(calls.update).toEqual([{ password: "password-nueva" }]);
 });
