@@ -130,6 +130,15 @@ const SUPABASE_URL = APP_CONFIG.supabaseUrl || "https://ramnvcuwyfhepspzzzpn.sup
 const SUPABASE_KEY = APP_CONFIG.supabaseKey || "sb_publishable_6B6PMd8eB85OKIS1e74Qgg_YPmTaAdj";
 const TABLE = "evaluaciones";
 
+// Los correos de Auth deben volver siempre a la raíz real de la aplicación. Esto es
+// especialmente importante en GitHub Pages, donde la app vive bajo /SevillaFC/ y una
+// redirección a la raíz del dominio termina en un 404.
+const APP_BASE_URL = new URL("./", window.location.href);
+APP_BASE_URL.search = "";
+APP_BASE_URL.hash = "";
+const AUTH_REDIRECT_URL = APP_CONFIG.authRedirectUrl || APP_BASE_URL.href;
+const AUTH_RECOVERY_URL = APP_CONFIG.authRecoveryUrl || new URL("?auth=recovery", AUTH_REDIRECT_URL).href;
+
 // --- Seguimiento de errores (Sentry) ---
 // La inicialización vive en sentry.js. Esta función única permite que todo el código
 // reporte incidencias controladas sin duplicar clientes ni enviar datos durante las pruebas.
@@ -670,6 +679,14 @@ function mostrarRegistro(){
   document.getElementById("registroScreen").style.display = "block";
 }
 
+function mostrarNuevaPassword(){
+  ocultarTodasLasPantallas();
+  document.getElementById("nuevaPassword1").value = "";
+  document.getElementById("nuevaPassword2").value = "";
+  document.getElementById("nuevaPasswordError").textContent = "";
+  document.getElementById("codigoRecuperacionScreen").style.display = "block";
+}
+
 function mostrarPendienteAprobacion(){
   ocultarTodasLasPantallas();
   document.getElementById("pendienteAprobacionScreen").style.display = "block";
@@ -749,6 +766,7 @@ document.getElementById("btnRegistro").addEventListener("click", async () => {
   const password = document.getElementById("registroPassword").value;
   const errorEl = document.getElementById("registroError");
   errorEl.textContent = "";
+  errorEl.classList.remove("auth-success");
 
   if (!nombre){
     errorEl.textContent = "Indica tu nombre y apellidos.";
@@ -769,7 +787,10 @@ document.getElementById("btnRegistro").addEventListener("click", async () => {
   const { error } = await sb.auth.signUp({
     email,
     password,
-    options: { data: { nombre: nombre } }
+    options: {
+      data: { nombre: nombre },
+      emailRedirectTo: AUTH_REDIRECT_URL
+    }
   });
   btn.disabled = false;
   btn.textContent = "Crear cuenta";
@@ -780,17 +801,22 @@ document.getElementById("btnRegistro").addEventListener("click", async () => {
       : "No se pudo crear la cuenta: " + error.message;
     return;
   }
-  // signUp ya inicia sesión automáticamente si la confirmación de email está desactivada;
-  // el propio listener de sesión (onAuthStateChange) se encargará de mostrar la pantalla
-  // de "pendiente de aprobación", ya que la cuenta se crea con aprobado = false.
+  // Si la confirmación de email está activa no se crea sesión todavía, así que damos una
+  // instrucción clara. Si está desactivada, onAuthStateChange mostrará la cuenta pendiente.
+  if (!document.getElementById("appContainer").offsetParent){
+    errorEl.classList.add("auth-success");
+    errorEl.textContent = "Cuenta creada. Revisa tu correo para confirmar la dirección. Después, un coordinador aprobará tu acceso.";
+  }
 });
 
-let emailEnRecuperacion = "";
+let modoRecuperacion = new URLSearchParams(window.location.search).get("auth") === "recovery" ||
+  new URLSearchParams(window.location.hash.replace(/^#/, "")).get("type") === "recovery";
 
 document.getElementById("irAOlvide").addEventListener("click", e => {
   e.preventDefault();
   document.getElementById("olvideEmail").value = document.getElementById("loginEmail").value;
   document.getElementById("olvideError").textContent = "";
+  document.getElementById("olvideError").classList.remove("auth-success");
   ocultarTodasLasPantallas();
   document.getElementById("olvideScreen").style.display = "block";
 });
@@ -800,10 +826,11 @@ document.getElementById("volverDesdeOlvide").addEventListener("click", e => {
   mostrarLogin();
 });
 
-async function enviarCodigoRecuperacion(){
+async function enviarEnlaceRecuperacion(){
   const email = document.getElementById("olvideEmail").value.trim();
   const errorEl = document.getElementById("olvideError");
   errorEl.textContent = "";
+  errorEl.classList.remove("auth-success");
   if (!email){
     errorEl.textContent = "Introduce tu email.";
     return false;
@@ -814,42 +841,40 @@ async function enviarCodigoRecuperacion(){
   // Deliberadamente no distinguimos aquí si el email existe o no en la respuesta: pasar
   // siempre a la misma pantalla evita que alguien pueda usar este formulario para averiguar
   // qué emails están dados de alta en la app.
-  await sb.auth.resetPasswordForEmail(email);
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: AUTH_RECOVERY_URL
+  });
   btn.disabled = false;
-  btn.textContent = "Enviar código";
-  emailEnRecuperacion = email;
+  btn.textContent = "Volver a enviar el enlace";
+  if (error && (error.status === 429 || /rate|limit/i.test(error.message || ""))){
+    errorEl.textContent = "Se han realizado demasiados intentos. Espera unos minutos y vuelve a probar.";
+    return false;
+  }
+  // Mostramos la misma respuesta exista o no la cuenta para no revelar qué emails están
+  // registrados. El siguiente paso se realiza desde el enlace seguro recibido por correo.
+  errorEl.classList.add("auth-success");
+  errorEl.textContent = "Si existe una cuenta con ese email, recibirás un enlace para crear una contraseña nueva. Revisa también la carpeta de spam.";
   return true;
 }
 
 document.getElementById("btnOlvide").addEventListener("click", async () => {
-  if (!(await enviarCodigoRecuperacion())) return;
-  document.getElementById("codigoRecuperacion").value = "";
-  document.getElementById("nuevaPassword1").value = "";
-  document.getElementById("nuevaPassword2").value = "";
-  document.getElementById("nuevaPasswordError").textContent = "";
-  ocultarTodasLasPantallas();
-  document.getElementById("codigoRecuperacionScreen").style.display = "block";
+  await enviarEnlaceRecuperacion();
 });
 
-document.getElementById("reenviarCodigo").addEventListener("click", async e => {
+document.getElementById("solicitarOtroEnlace").addEventListener("click", async e => {
   e.preventDefault();
-  document.getElementById("olvideEmail").value = emailEnRecuperacion;
   document.getElementById("olvideError").textContent = "";
+  document.getElementById("olvideError").classList.remove("auth-success");
   ocultarTodasLasPantallas();
   document.getElementById("olvideScreen").style.display = "block";
 });
 
 document.getElementById("btnGuardarNuevaPassword").addEventListener("click", async () => {
-  const codigo = document.getElementById("codigoRecuperacion").value.trim();
   const p1 = document.getElementById("nuevaPassword1").value;
   const p2 = document.getElementById("nuevaPassword2").value;
   const errorEl = document.getElementById("nuevaPasswordError");
   errorEl.textContent = "";
 
-  if (!/^\d{4,12}$/.test(codigo)){
-    errorEl.textContent = "El código solo debe contener números.";
-    return;
-  }
   if (p1.length < 6){
     errorEl.textContent = "La contraseña debe tener al menos 6 caracteres.";
     return;
@@ -861,28 +886,18 @@ document.getElementById("btnGuardarNuevaPassword").addEventListener("click", asy
 
   const btn = document.getElementById("btnGuardarNuevaPassword");
   btn.disabled = true;
-  btn.textContent = "Comprobando…";
-
-  const { error: errorCodigo } = await sb.auth.verifyOtp({
-    email: emailEnRecuperacion,
-    token: codigo,
-    type: "recovery"
-  });
-  if (errorCodigo){
-    btn.disabled = false;
-    btn.textContent = "Restablecer contraseña";
-    errorEl.textContent = "Código incorrecto o caducado. Pide uno nuevo con \"Volver a enviarlo\".";
-    return;
-  }
+  btn.textContent = "Guardando…";
 
   const { error: errorPassword } = await sb.auth.updateUser({ password: p1 });
   btn.disabled = false;
   btn.textContent = "Restablecer contraseña";
   if (errorPassword){
-    errorEl.textContent = "No se pudo actualizar la contraseña: " + errorPassword.message;
+    errorEl.textContent = "El enlace no es válido o ha caducado. Solicita uno nuevo.";
     return;
   }
 
+  modoRecuperacion = false;
+  history.replaceState({}, document.title, AUTH_REDIRECT_URL);
   setStatus("Contraseña actualizada correctamente.", "var(--success)");
   mostrarApp();
 });
@@ -899,6 +914,15 @@ document.getElementById("btnLogout").addEventListener("click", async () => {
 
 sb.auth.onAuthStateChange((evento, session) => {
   sesionActual = session;
+  if (evento === "PASSWORD_RECOVERY"){
+    modoRecuperacion = true;
+    mostrarNuevaPassword();
+    return;
+  }
+  if (modoRecuperacion && session){
+    mostrarNuevaPassword();
+    return;
+  }
   if (session) {
     mostrarApp().then(() => {
       if (evento === "SIGNED_IN" || evento === "TOKEN_REFRESHED") {
@@ -912,7 +936,8 @@ sb.auth.onAuthStateChange((evento, session) => {
 
 sb.auth.getSession().then(({ data }) => {
   sesionActual = data.session;
-  if (data.session) mostrarApp();
+  if (data.session && modoRecuperacion) mostrarNuevaPassword();
+  else if (data.session) mostrarApp();
   else if (!navigator.onLine && obtenerPerfilOffline()) mostrarAppOffline();
   else mostrarLogin();
 });
