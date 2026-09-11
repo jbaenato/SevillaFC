@@ -679,11 +679,16 @@ function mostrarRegistro(){
   document.getElementById("registroScreen").style.display = "block";
 }
 
-function mostrarNuevaPassword(){
+function mostrarNuevaPassword(requiereCodigo){
   ocultarTodasLasPantallas();
+  document.getElementById("codigoRecuperacion").value = "";
   document.getElementById("nuevaPassword1").value = "";
   document.getElementById("nuevaPassword2").value = "";
   document.getElementById("nuevaPasswordError").textContent = "";
+  document.getElementById("codigoRecuperacionGrupo").style.display = requiereCodigo ? "block" : "none";
+  document.getElementById("recuperacionInstrucciones").textContent = requiereCodigo
+    ? "Introduce el código que has recibido por correo y escribe tu nueva contraseña."
+    : "El enlace se ha verificado. Escribe la contraseña que quieres utilizar a partir de ahora.";
   document.getElementById("codigoRecuperacionScreen").style.display = "block";
 }
 
@@ -811,6 +816,9 @@ document.getElementById("btnRegistro").addEventListener("click", async () => {
 
 let modoRecuperacion = new URLSearchParams(window.location.search).get("auth") === "recovery" ||
   new URLSearchParams(window.location.hash.replace(/^#/, "")).get("type") === "recovery";
+let recuperacionVerificada = false;
+let guardandoNuevaPassword = false;
+let emailEnRecuperacion = "";
 
 document.getElementById("irAOlvide").addEventListener("click", e => {
   e.preventDefault();
@@ -845,15 +853,17 @@ async function enviarEnlaceRecuperacion(){
     redirectTo: AUTH_RECOVERY_URL
   });
   btn.disabled = false;
-  btn.textContent = "Volver a enviar el enlace";
+  btn.textContent = "Volver a enviar";
   if (error && (error.status === 429 || /rate|limit/i.test(error.message || ""))){
     errorEl.textContent = "Se han realizado demasiados intentos. Espera unos minutos y vuelve a probar.";
     return false;
   }
-  // Mostramos la misma respuesta exista o no la cuenta para no revelar qué emails están
-  // registrados. El siguiente paso se realiza desde el enlace seguro recibido por correo.
-  errorEl.classList.add("auth-success");
-  errorEl.textContent = "Si existe una cuenta con ese email, recibirás un enlace para crear una contraseña nueva. Revisa también la carpeta de spam.";
+  // El proyecto puede enviar un código OTP o un enlace, según la plantilla configurada
+  // en Supabase. La pantalla admite ambas opciones sin revelar si el email existe.
+  emailEnRecuperacion = email;
+  modoRecuperacion = true;
+  recuperacionVerificada = false;
+  mostrarNuevaPassword(true);
   return true;
 }
 
@@ -863,6 +873,9 @@ document.getElementById("btnOlvide").addEventListener("click", async () => {
 
 document.getElementById("solicitarOtroEnlace").addEventListener("click", async e => {
   e.preventDefault();
+  modoRecuperacion = false;
+  recuperacionVerificada = false;
+  document.getElementById("olvideEmail").value = emailEnRecuperacion;
   document.getElementById("olvideError").textContent = "";
   document.getElementById("olvideError").classList.remove("auth-success");
   ocultarTodasLasPantallas();
@@ -870,11 +883,16 @@ document.getElementById("solicitarOtroEnlace").addEventListener("click", async e
 });
 
 document.getElementById("btnGuardarNuevaPassword").addEventListener("click", async () => {
+  const codigo = document.getElementById("codigoRecuperacion").value.trim();
   const p1 = document.getElementById("nuevaPassword1").value;
   const p2 = document.getElementById("nuevaPassword2").value;
   const errorEl = document.getElementById("nuevaPasswordError");
   errorEl.textContent = "";
 
+  if (!recuperacionVerificada && !/^\d{4,12}$/.test(codigo)){
+    errorEl.textContent = "Introduce el código numérico recibido por correo.";
+    return;
+  }
   if (p1.length < 6){
     errorEl.textContent = "La contraseña debe tener al menos 6 caracteres.";
     return;
@@ -886,9 +904,28 @@ document.getElementById("btnGuardarNuevaPassword").addEventListener("click", asy
 
   const btn = document.getElementById("btnGuardarNuevaPassword");
   btn.disabled = true;
-  btn.textContent = "Guardando…";
+  btn.textContent = recuperacionVerificada ? "Guardando…" : "Comprobando código…";
+  guardandoNuevaPassword = true;
+
+  if (!recuperacionVerificada){
+    const { data, error: errorCodigo } = await sb.auth.verifyOtp({
+      email: emailEnRecuperacion,
+      token: codigo,
+      type: "recovery"
+    });
+    if (errorCodigo){
+      guardandoNuevaPassword = false;
+      btn.disabled = false;
+      btn.textContent = "Restablecer contraseña";
+      errorEl.textContent = "El código es incorrecto o ha caducado. Solicita uno nuevo.";
+      return;
+    }
+    sesionActual = data && data.session ? data.session : sesionActual;
+    recuperacionVerificada = true;
+  }
 
   const { error: errorPassword } = await sb.auth.updateUser({ password: p1 });
+  guardandoNuevaPassword = false;
   btn.disabled = false;
   btn.textContent = "Restablecer contraseña";
   if (errorPassword){
@@ -916,11 +953,13 @@ sb.auth.onAuthStateChange((evento, session) => {
   sesionActual = session;
   if (evento === "PASSWORD_RECOVERY"){
     modoRecuperacion = true;
-    mostrarNuevaPassword();
+    recuperacionVerificada = true;
+    if (!guardandoNuevaPassword) mostrarNuevaPassword(false);
     return;
   }
   if (modoRecuperacion && session){
-    mostrarNuevaPassword();
+    recuperacionVerificada = true;
+    if (!guardandoNuevaPassword) mostrarNuevaPassword(false);
     return;
   }
   if (session) {
@@ -936,7 +975,10 @@ sb.auth.onAuthStateChange((evento, session) => {
 
 sb.auth.getSession().then(({ data }) => {
   sesionActual = data.session;
-  if (data.session && modoRecuperacion) mostrarNuevaPassword();
+  if (data.session && modoRecuperacion){
+    recuperacionVerificada = true;
+    mostrarNuevaPassword(false);
+  }
   else if (data.session) mostrarApp();
   else if (!navigator.onLine && obtenerPerfilOffline()) mostrarAppOffline();
   else mostrarLogin();
