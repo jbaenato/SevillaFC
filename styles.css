@@ -469,3 +469,6 @@
     margin-top: 12px;
     min-height: 18px;
   }
+  .login-error.auth-success {
+    color: var(--success);
+  }
