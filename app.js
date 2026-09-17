@@ -789,29 +789,35 @@ document.getElementById("btnRegistro").addEventListener("click", async () => {
   const btn = document.getElementById("btnRegistro");
   btn.disabled = true;
   btn.textContent = "Creando cuenta…";
-  const { error } = await sb.auth.signUp({
-    email,
-    password,
-    options: {
-      data: { nombre: nombre },
-      emailRedirectTo: AUTH_REDIRECT_URL
+  let error = null;
+  try {
+    const res = await fetch(SUPABASE_URL + "/functions/v1/solicitar-alta", {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ nombre, email, password })
+    });
+    if (!res.ok){
+      let mensaje = "HTTP " + res.status;
+      try { const cuerpo = await res.json(); if (cuerpo.error) mensaje = cuerpo.error; } catch(e){}
+      error = new Error(mensaje);
     }
-  });
+  } catch(e){
+    error = e;
+  }
   btn.disabled = false;
   btn.textContent = "Crear cuenta";
 
   if (error){
-    errorEl.textContent = error.message.includes("already registered") || error.message.includes("already been registered")
+    errorEl.textContent = error.message.includes("already registered") || error.message.includes("already been registered") || error.message.includes("Ya existe")
       ? "Ya existe una cuenta con ese email."
       : "No se pudo crear la cuenta: " + error.message;
     return;
   }
-  // Si la confirmación de email está activa no se crea sesión todavía, así que damos una
-  // instrucción clara. Si está desactivada, onAuthStateChange mostrará la cuenta pendiente.
-  if (!document.getElementById("appContainer").offsetParent){
-    errorEl.classList.add("auth-success");
-    errorEl.textContent = "Cuenta creada. Revisa tu correo para confirmar la dirección. Después, un coordinador aprobará tu acceso.";
-  }
+  errorEl.classList.add("auth-success");
+  errorEl.textContent = "Solicitud enviada. Un coordinador deberá aprobar tu acceso antes de que puedas entrar.";
 });
 
 let modoRecuperacion = new URLSearchParams(window.location.search).get("auth") === "recovery" ||
