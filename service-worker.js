@@ -1,4 +1,4 @@
-const CACHE_NAME = "porteros-cache-v30";
+const CACHE_NAME = "porteros-cache-v31";
 const FILES_TO_CACHE = [
   "./index.html",
   "./app.js",
