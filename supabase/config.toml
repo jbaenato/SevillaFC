@@ -33,3 +33,6 @@ verify_jwt = false
 
 [functions.actualizar-usuario]
 verify_jwt = false
+
+[functions.solicitar-alta]
+verify_jwt = false
