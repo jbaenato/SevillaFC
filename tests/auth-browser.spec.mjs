@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 function clienteSupabaseSimulado(){
   return `
     window.__authCallbacks = [];
-    window.__authCalls = { signUp: [], reset: [], verify: [], update: [] };
+    window.__authCalls = { reset: [], verify: [], update: [] };
     window.supabase = {
       createClient: function () {
         return { auth: {
@@ -13,7 +13,6 @@ function clienteSupabaseSimulado(){
           },
           getSession: async function () { return { data: { session: null } }; },
           signInWithPassword: async function () { return { data: {}, error: null }; },
-          signUp: async function (payload) { window.__authCalls.signUp.push(payload); return { data: { session: null }, error: null }; },
           resetPasswordForEmail: async function (email, options) { window.__authCalls.reset.push({ email, options }); return { data: {}, error: null }; },
           verifyOtp: async function (payload) {
             window.__authCalls.verify.push(payload);
@@ -36,7 +35,17 @@ test.beforeEach(async ({ page }) => {
   }));
 });
 
-test("el alta y la recuperación vuelven a la raíz real de la app", async ({ page }) => {
+test("el alta crea una solicitud y la recuperación vuelve a la raíz real de la app", async ({ page }) => {
+  const solicitudesAlta = [];
+  await page.route("https://ramnvcuwyfhepspzzzpn.supabase.co/functions/v1/solicitar-alta", async (route) => {
+    solicitudesAlta.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ success: true })
+    });
+  });
+
   await page.goto("/index.html");
 
   await page.click("#irARegistro");
@@ -44,7 +53,7 @@ test("el alta y la recuperación vuelven a la raíz real de la app", async ({ pa
   await page.fill("#registroEmail", "tecnico@example.com");
   await page.fill("#registroPassword", "password-segura");
   await page.click("#btnRegistro");
-  await expect(page.locator("#registroError")).toContainText("Revisa tu correo");
+  await expect(page.locator("#registroError")).toContainText("Solicitud enviada");
 
   await page.click("#irALogin");
   await page.click("#irAOlvide");
@@ -54,7 +63,11 @@ test("el alta y la recuperación vuelven a la raíz real de la app", async ({ pa
   await expect(page.locator("#codigoRecuperacion")).toBeVisible();
 
   const calls = await page.evaluate(() => window.__authCalls);
-  expect(calls.signUp[0].options.emailRedirectTo).toBe("http://127.0.0.1:4173/");
+  expect(solicitudesAlta).toEqual([{
+    nombre: "Técnico prueba",
+    email: "tecnico@example.com",
+    password: "password-segura"
+  }]);
   expect(calls.reset[0]).toEqual({
     email: "tecnico@example.com",
     options: { redirectTo: "http://127.0.0.1:4173/?auth=recovery" }
