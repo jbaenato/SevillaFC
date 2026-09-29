@@ -1,8 +1,8 @@
 // supabase/functions/editar-portero/index.ts
 //
-// Actualiza el nombre y la lateralidad de un portero. Cualquier técnico con sesión puede
+// Actualiza los datos básicos de un portero. Cualquier técnico con sesión puede
 // hacerlo, pero queda registrado en "auditoria" (quién, qué valores había antes y después),
-// y solo se pueden tocar estas dos columnas — nunca el año de nacimiento ni ninguna otra.
+// y solo se pueden tocar estas columnas permitidas.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -22,6 +22,13 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 const LATERALIDADES_VALIDAS = ["Derecha", "Izquierda", "N/D"];
+
+function normalizarAnioNacimiento(valor: unknown) {
+  const anio = Number(valor);
+  const anioMaximo = new Date().getFullYear();
+  if (!Number.isInteger(anio) || anio < 1970 || anio > anioMaximo) return null;
+  return anio;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -51,12 +58,16 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Cuerpo de la petición no es JSON válido." }, 400);
   }
 
-  const { portero_id, nombre, lateralidad } = body;
+  const { portero_id, nombre, lateralidad, anio_nacimiento } = body;
   const nombreLimpio = (nombre || "").trim();
   if (!portero_id || !nombreLimpio) {
     return jsonResponse({ error: "Faltan datos obligatorios (portero_id, nombre)." }, 400);
   }
   const lateralidadFinal = LATERALIDADES_VALIDAS.includes(lateralidad) ? lateralidad : "N/D";
+  const anioNacimientoFinal = normalizarAnioNacimiento(anio_nacimiento);
+  if (!anioNacimientoFinal) {
+    return jsonResponse({ error: "Introduce un año de nacimiento válido." }, 400);
+  }
 
   const supabase = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -73,7 +84,7 @@ Deno.serve(async (req) => {
   try {
     const { data: anterior, error: errLeer } = await supabase
       .from("porteros")
-      .select("nombre, lateralidad")
+      .select("nombre, lateralidad, anio_nacimiento")
       .eq("id", portero_id)
       .maybeSingle();
     if (errLeer) throw errLeer;
@@ -81,7 +92,7 @@ Deno.serve(async (req) => {
 
     const { error: errUpdate } = await supabase
       .from("porteros")
-      .update({ nombre: nombreLimpio, lateralidad: lateralidadFinal })
+      .update({ nombre: nombreLimpio, lateralidad: lateralidadFinal, anio_nacimiento: anioNacimientoFinal })
       .eq("id", portero_id);
     if (errUpdate) throw errUpdate;
 
@@ -98,8 +109,16 @@ Deno.serve(async (req) => {
       tabla: "porteros",
       registro_id: portero_id,
       detalle: {
-        antes: { nombre: anterior.nombre, lateralidad: anterior.lateralidad },
-        despues: { nombre: nombreLimpio, lateralidad: lateralidadFinal },
+        antes: {
+          nombre: anterior.nombre,
+          lateralidad: anterior.lateralidad,
+          anio_nacimiento: anterior.anio_nacimiento,
+        },
+        despues: {
+          nombre: nombreLimpio,
+          lateralidad: lateralidadFinal,
+          anio_nacimiento: anioNacimientoFinal,
+        },
       },
     });
     if (errAuditoria) console.error("No se pudo registrar la auditoría:", errAuditoria);
