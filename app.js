@@ -1496,6 +1496,8 @@ function mostrarFormularioEdicionPortero(ev){
   const cont = document.getElementById("editarPorteroForm");
   const nombreActual = nombrePorteroDe(ev);
   const lateralidadActual = porteroCampo(ev, "lateralidad") || "N/D";
+  const anioActual = porteroCampo(ev, "anio_nacimiento") || "";
+  const anioMaximo = new Date().getFullYear();
 
   cont.innerHTML =
     '<div class="edicion-portero">' +
@@ -1511,6 +1513,10 @@ function mostrarFormularioEdicionPortero(ev){
           '<label class="radio-option"><input type="radio" name="editLateralidad" value="N/D" ' + (lateralidadActual === "N/D" ? "checked" : "") + '> N/D</label>' +
         '</div>' +
       '</div>' +
+      '<div class="field-group">' +
+        '<label for="editAnioNacimiento">Año de nacimiento</label>' +
+        '<input type="number" id="editAnioNacimiento" value="' + anioActual + '" inputmode="numeric" min="1970" max="' + anioMaximo + '">' +
+      '</div>' +
       '<div class="actions">' +
         '<button class="btn-secondary" id="cancelarEdicionPortero">Cancelar</button>' +
         '<button class="btn-primary" id="guardarEdicionPortero">Guardar cambios</button>' +
@@ -1525,9 +1531,17 @@ function mostrarFormularioEdicionPortero(ev){
 async function guardarEdicionPortero(ev){
   const nuevoNombre = document.getElementById("editNombrePortero").value.trim();
   const lateralidadEl = document.querySelector('input[name="editLateralidad"]:checked');
+  const anioEl = document.getElementById("editAnioNacimiento");
+  const nuevoAnio = parseInt(anioEl.value, 10);
+  const anioMaximo = new Date().getFullYear();
   const errorEl = document.getElementById("edicionPorteroError");
   if (!nuevoNombre){
     errorEl.textContent = "El nombre no puede quedar vacío.";
+    return;
+  }
+  if (!nuevoAnio || nuevoAnio < 1970 || nuevoAnio > anioMaximo){
+    errorEl.textContent = "Introduce un año de nacimiento válido.";
+    anioEl.focus();
     return;
   }
   const nuevaLateralidad = lateralidadEl ? lateralidadEl.value : "N/D";
@@ -1541,7 +1555,7 @@ async function guardarEdicionPortero(ev){
         "Authorization": "Bearer " + token,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ portero_id: ev.portero_id, nombre: nuevoNombre, lateralidad: nuevaLateralidad })
+      body: JSON.stringify({ portero_id: ev.portero_id, nombre: nuevoNombre, lateralidad: nuevaLateralidad, anio_nacimiento: nuevoAnio })
     });
     if (!res.ok){
       let mensaje = "HTTP " + res.status;
@@ -1553,7 +1567,11 @@ async function guardarEdicionPortero(ev){
     evaluacionesCargadas.forEach(e => {
       if (e.portero_id !== ev.portero_id) return;
       const p = Array.isArray(e.porteros) ? e.porteros[0] : e.porteros;
-      if (p){ p.nombre = nuevoNombre; p.lateralidad = nuevaLateralidad; }
+      if (p){
+        p.nombre = nuevoNombre;
+        p.lateralidad = nuevaLateralidad;
+        p.anio_nacimiento = nuevoAnio;
+      }
     });
 
     document.getElementById("editarPorteroForm").innerHTML = "";
@@ -2441,6 +2459,7 @@ document.getElementById("exportar").addEventListener("click", async () => {
 
 function iniciarApp(){
   document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
+  document.getElementById("anioNacimiento").max = String(new Date().getFullYear());
 
   cargarModalidades().then(intentarRestaurarBorrador);
   renderSavedList();
